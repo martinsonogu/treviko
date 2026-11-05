@@ -1,0 +1,1 @@
+-- No fabricated food data. Use the reviewed nutrition import script explicitly.

@@ -1,0 +1,13 @@
+import { z } from 'zod';
+import { allergens } from '../profile/schema';
+export const nutrientKeys=['energyKcal','proteinG','carbohydrateG','fatG'] as const;
+export const nutrientsSchema=z.object({energyKcal:z.number().finite().min(0).nullable(),proteinG:z.number().finite().min(0).nullable(),carbohydrateG:z.number().finite().min(0).nullable(),fatG:z.number().finite().min(0).nullable()}).strict();
+export type Nutrients=z.infer<typeof nutrientsSchema>;
+export const foodSchema=z.object({id:z.string().min(1).max(80),name:z.string().min(1).max(500),source:z.enum(['usda_fdc','development_fixture']),sourceId:z.string(),sourceUrl:z.string().url(),license:z.string(),retrievedAt:z.string(),dataType:z.string(),preparation:z.enum(['raw','cooked','as_sold','unknown']),per100g:nutrientsSchema,servingGrams:z.number().positive().nullable(),densityGPerMl:z.number().positive().nullable(),allergens:z.array(z.enum(allergens)),allergenStatus:z.enum(['reviewed','unknown']),verified:z.boolean()}).strict();
+export type Food=z.infer<typeof foodSchema>;
+export const quantitySchema=z.object({amount:z.number().finite().positive().max(100000),unit:z.enum(['g','kg','ml','l','serving'])}).strict();
+export type Quantity=z.infer<typeof quantitySchema>;
+export const recipeSchema=z.object({id:z.string().min(1).max(80),name:z.string().min(1).max(150),cuisine:z.string(),dietaryPatterns:z.array(z.string()),servings:z.number().int().min(1).max(20),preparationMinutes:z.number().int().min(1).max(1440),instructions:z.array(z.string()).min(1),ingredients:z.array(z.object({foodId:z.string(),grams:z.number().finite().positive()}).strict()).min(1).max(30),allergens:z.array(z.enum(allergens)),allergenStatus:z.enum(['reviewed','unknown']),developmentFixture:z.boolean()}).strict();
+export type Recipe=z.infer<typeof recipeSchema>;
+export const mealRequestSchema=z.object({cuisine:z.string().trim().max(80).optional(),ingredients:z.array(z.string().trim().min(1).max(80)).max(20).default([]),maxPreparationMinutes:z.number().int().min(1).max(1440).optional(),proteinPreference:z.enum(['any','higher']).default('any'),count:z.number().int().min(1).max(7).default(3)}).strict();
+export const mealPlanSchema=z.object({title:z.string().trim().min(1).max(100),items:z.array(z.object({recipeId:z.string().min(1).max(80),servings:z.number().finite().positive().max(20),day:z.number().int().min(1).max(7),mealNumber:z.number().int().min(1).max(8)}).strict()).min(1).max(56)}).strict().refine(plan=>new Set(plan.items.map(i=>`${i.day}:${i.mealNumber}`)).size===plan.items.length,'Only one recipe per meal slot');

@@ -1,0 +1,77 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {loadSource as load} from './load-source.mjs';
+import {sqlClient} from './coaching-db-client.mjs';
+const A='11111111-1111-4111-8111-111111111111',B='22222222-2222-4222-8222-222222222222';
+const request=(path,body,user=A)=>new Request('http://localhost'+path,{method:body?'POST':'GET',headers:{...(user?{authorization:`Bearer ${user}`}:{ }),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+const html=(Component,props)=>renderToStaticMarkup(React.createElement(Component,props));
+test('local SQL/API journey confirms a shared plan, links meals, revises and restores it; no live Auth or AI',async()=>{
+ const db=new PGlite();const restore=[];
+ function stub(module,key,value){const previous=module[key];restore.push(()=>{module[key]=previous;});module[key]=value;}
+ try{
+  await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated,anon,service_role;grant execute on function auth.uid() to authenticated,anon,service_role;`);
+  for(const name of ['202611040001_milestone4.sql','202611040002_shared_ai_controls.sql','202611050001_coaching_plans.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
+  await db.query('insert into auth.users(id) values($1),($2)',[A,B]);
+  const {fixtureFoods,fixtureRecipes}=load('src/lib/nutrition/fixtures.ts');const recipe=fixtureRecipes[0];
+  for(const food of fixtureFoods){await db.query(`insert into public.foods(id,name,source,source_id,source_url,source_license,retrieved_at,preparation,allergens,allergen_status,data_type,verified) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[food.id,food.name,food.source,food.sourceId,food.sourceUrl,food.license,food.retrievedAt,food.preparation,food.allergens,food.allergenStatus,food.dataType,food.verified]);for(const [key,value] of Object.entries(food.per100g)){const nutrient={energyKcal:'energy_kcal',proteinG:'protein_g',carbohydrateG:'carbohydrate_g',fatG:'fat_g'}[key];await db.query('insert into public.food_nutrients(food_id,nutrient,amount_per_100g,unit) values($1,$2,$3,$4)',[food.id,nutrient,value,key==='energyKcal'?'kcal':'g']);}}
+  await db.query('insert into public.recipes(id,name,cuisine,dietary_patterns,servings,preparation_minutes,instructions,allergens,allergen_status,development_fixture,published) values($1,$2,$3,$4,$5,$6,$7,$8,$9,true,true)',[recipe.id,recipe.name,recipe.cuisine,recipe.dietaryPatterns,recipe.servings,recipe.preparationMinutes,recipe.instructions,recipe.allergens,recipe.allergenStatus]);
+  for(const [position,i] of recipe.ingredients.entries())await db.query('insert into public.recipe_ingredients(recipe_id,position,food_id,grams) values($1,$2,$3,$4)',[recipe.id,position,i.foodId,i.grams]);
+  const admin=sqlClient(db,null,true),clients={[A]:sqlClient(db,A),[B]:sqlClient(db,B)};
+  const session=load('src/lib/auth/session.ts');stub(session,'requireUser',async req=>{const user=req?.headers.get('authorization')?.replace('Bearer ','');if(!clients[user])throw new session.AuthenticationError();return {userId:user,email:'test@example.test',db:clients[user]};});
+  stub(load('src/lib/supabase/admin.ts'),'createAdminSupabase',()=>admin);
+  const configuration=load('src/lib/coach/config.ts');const config=configuration.getCoachConfig({OPENAI_API_KEY:'mock-only',OPENAI_MODEL:'mock-only'});stub(configuration,'getCoachConfig',()=>config);
+  const profile=load('src/lib/profile/service.ts');const context={userId:A,email:'test@example.test',db:clients[A]};
+  await profile.updateProfile(context,{displayName:'Alex',experience:'intermediate',goals:['muscle_gain'],equipment:['dumbbells','bench','chest-press-machine','leg-extension-machine'],trainingDays:3,sessionMinutes:30,onboardingComplete:true,onboardingStep:6});
+  const candidates=load('src/lib/coaching/validation.ts').planCandidates(await profile.getProfile(context));const leg=candidates.find(e=>e.primaryMuscles.includes('Quads'));let revised=false;let broken=false;
+  const draft=()=>({rationale:'A balanced starting proposal.',assumptions:[],experience:'intermediate',equipment:['dumbbells','bench'],sessionMinutes:30,days:[1,3,5].map((weekday,i)=>({weekday,name:revised&&i===1?'Leg-focused revision':`Training day ${i+1}`,exerciseIds:[revised&&i===1?leg.id:candidates[i].id]})),meals:[{slot:1,name:recipe.name,guidance:'Check ingredients, labels and preparation.',recipeId:recipe.id}]});
+  const provider=load('src/lib/coach/provider.ts'),structured=provider.createStructuredCaller,openai=provider.createOpenAIProvider;const transport={responses:{parse:async req=>({status:'completed',usage:{input_tokens:20,output_tokens:20},output_parsed:req.text.format.name==='treviko_scope'?{category:'fitness',outcome:'allowed',topic:'mixed',safety:'none',injection:false,needsExercises:true,muscles:[]}:req.text.format.name==='treviko_review'?{inScope:true,safe:true,grounded:true,preferencesRespected:true,private:true}:broken?{unexpected:'PRIVATE_INVALID_OUTPUT'}:draft()})}};
+  stub(provider,'createStructuredCaller',(cfg,monitor)=>structured(cfg,monitor,transport));stub(provider,'createOpenAIProvider',(cfg,monitor)=>openai(cfg,monitor,transport));
+  const get=load('src/app/api/v1/coaching/plan/route.ts').GET,propose=load('src/app/api/v1/coaching/plan/proposals/route.ts').POST,confirm=load('src/app/api/v1/coaching/plan/confirm/route.ts').POST,cancel=load('src/app/api/v1/coaching/plan/cancel/route.ts').POST;
+  assert.equal((await get(request('/api/v1/coaching/plan',null,null))).status,401);
+  assert.equal((await (await get(request('/api/v1/coaching/plan'))).json()).data.plan,null);
+  const counts=async()=>Object.fromEntries(await Promise.all(['coaching_plans','plan_proposals','meal_plans','coach_conversations'].map(async table=>[table,Number((await db.query('select count(*) as n from public.'+table)).rows[0].n)])));
+  const before=await counts();
+  for(const invalid of [{message:''},{message:'Plan',userId:B},{message:'Plan',conversationId:'invalid'}])assert.equal((await propose(request('/api/v1/coaching/plan/proposals',invalid))).status,400);
+  assert.deepEqual(await counts(),before,'invalid input performs no writes');
+  broken=true;const failed=await propose(request('/api/v1/coaching/plan/proposals',{message:'Build a plan.'}));assert.equal(failed.status,502);assert.equal((await failed.json()).error.code,'PLAN_OUTPUT_INVALID');assert.deepEqual(await counts(),before,'failed generation stores no plan/proposal/meal and cleans its empty conversation');
+  assert.equal(Number((await db.query('select count(*) as n from public.ai_request_leases')).rows[0].n),0);broken=false;
+  let result=await propose(request('/api/v1/coaching/plan/proposals',{message:'Build my training and daily meals.'}));let body=await result.json();assert.equal(result.status,200,JSON.stringify(body));const first=body.data.proposal,chatId=body.data.conversationId;
+  assert.equal(load('src/lib/coaching/schema.ts').proposalResponseSchema.safeParse(body.data).success,true);
+  assert.match(html(load('src/components/coaching/PlanPreview.tsx').default,{payload:first.payload}),/Your training week/);
+  assert.match(html(load('src/components/coaching/PlanPreview.tsx').default,{payload:first.payload}),/Your daily meals/);
+  assert.equal((await (await get(request('/api/v1/coaching/plan'))).json()).data.plan,null,'proposal is not active');
+  assert.equal((await confirm(request('/api/v1/coaching/plan/confirm',{proposalId:first.id,confirm:true},B))).status,404);
+  assert.equal((await confirm(request('/api/v1/coaching/plan/confirm',{proposalId:first.id,confirm:false}))).status,400);
+  assert.equal((await confirm(request('/api/v1/coaching/plan/confirm',{proposalId:'invalid',confirm:true}))).status,400);
+  assert.equal((await confirm(request('/api/v1/coaching/plan/confirm',{proposalId:first.id,confirm:true},A))).status,200);
+  const {getCoachingView}=load('src/lib/coaching/view.ts'),dashboard=load('src/components/coaching/DailyDashboard.tsx');
+  let view=await getCoachingView(context);assert.equal(view.plan.version,1);assert.equal(view.planNeedsReview,false);assert.ok(view.plan.mealPlanId);const firstMealPlanId=view.plan.mealPlanId;assert.equal(view.meals[0].recipeId,recipe.id);assert.ok(view.meals[0].nutrition.perServing.energyKcal>0);assert.ok(view.shopping.length>0);
+  assert.match(html(dashboard.default,{view}),/version 1/);assert.match(html(dashboard.TrainingPlan,{view}),/Training day 2/);assert.ok(html(dashboard.NutritionPlan,{view}).includes(recipe.name));assert.match(html(dashboard.default,{view}),/No workout history is available/);
+  revised=true;result=await propose(request('/api/v1/coaching/plan/proposals',{message:'Change one workout to legs.',conversationId:chatId}));body=await result.json();assert.equal(result.status,200,JSON.stringify(body));const second=body.data.proposal;
+  const parallelResponse=await propose(request('/api/v1/coaching/plan/proposals',{message:'Propose another option.',conversationId:chatId}));const parallel=(await parallelResponse.json()).data.proposal;
+  assert.equal((await confirm(request('/api/v1/coaching/plan/confirm',{proposalId:second.id,confirm:true}))).status,200);
+  assert.equal((await confirm(request('/api/v1/coaching/plan/confirm',{proposalId:parallel.id,confirm:true}))).status,409);
+  view=await getCoachingView(context);assert.equal(view.plan.version,2);assert.equal(view.plan.mealPlanId,firstMealPlanId,'unchanged meals reuse their saved meal plan');assert.equal(view.plan.payload.days[1].exercises[0].exerciseId,leg.id);assert.match(html(dashboard.default,{view}),/version 2/);assert.match(html(dashboard.TrainingPlan,{view}),/Leg-focused revision/);assert.equal(view.meals[0].recipeId,recipe.id);
+  // Re-reading via a fresh client simulates restoring server-authoritative state after leaving.
+  const restored=await getCoachingView({...context,db:sqlClient(db,A)});assert.deepEqual(restored.plan.payload,view.plan.payload);
+  assert.equal((await (await get(request('/api/v1/coaching/plan',null,B))).json()).data.plan,null);
+  result=await propose(request('/api/v1/coaching/plan/proposals',{message:'Suggest a different breakfast.',conversationId:chatId}));body=await result.json();assert.equal(result.status,200);const rejected=body.data.proposal;
+  assert.equal((await cancel(request('/api/v1/coaching/plan/cancel',{proposalId:rejected.id}))).status,200);assert.equal((await confirm(request('/api/v1/coaching/plan/confirm',{proposalId:rejected.id,confirm:true}))).status,409);
+  assert.equal((await getCoachingView(context)).plan.version,2);
+  const originalRpc=admin.rpc;admin.rpc=(name,args)=>name==='append_coach_turn'?Promise.resolve({data:null,error:{message:'PRIVATE_DATABASE_DIAGNOSTIC'}}):originalRpc(name,args);
+  const recoverable=await propose(request('/api/v1/coaching/plan/proposals',{message:'Prepare another option.',conversationId:chatId}));const recoverableBody=await recoverable.json();assert.equal(recoverable.status,200);assert.equal(recoverableBody.data.historySaved,false);assert.equal(recoverableBody.data.proposal.status,'pending');assert.equal((await getCoachingView(context)).plan.version,2);admin.rpc=originalRpc;
+  const reference=load('src/lib/nutrition/calculations.ts').recipeNutrition(recipe,fixtureFoods);assert.deepEqual(view.meals[0].nutrition.perServing,reference.perServing);
+  await db.query("update public.food_nutrients set amount_per_100g=null where nutrient='protein_g'");assert.equal((await getCoachingView(context)).totals.proteinG,null);
+  const guardedResponse=await propose(request('/api/v1/coaching/plan/proposals',{message:'Propose a fresh option.',conversationId:chatId}));const guarded=(await guardedResponse.json()).data.proposal;
+  await profile.updateProfile(context,{allergies:['peanuts']});
+  assert.equal((await confirm(request('/api/v1/coaching/plan/confirm',{proposalId:guarded.id,confirm:true}))).status,409);
+  config.requestsPerMinute=1;
+  const limited=await propose(request('/api/v1/coaching/plan/proposals',{message:'Build a plan.',conversationId:chatId}));assert.equal(limited.status,429);assert.equal(limited.headers.get('retry-after'),'60');
+  const crossSite=request('/api/v1/coaching/plan/confirm',{proposalId:first.id,confirm:true});crossSite.headers.set('Origin','https://foreign.invalid');assert.equal((await confirm(crossSite)).status,403);
+  view=await getCoachingView(context);assert.equal(view.planNeedsReview,true);assert.equal(view.meals[0].compatible,false);assert.equal(view.meals[0].nutrition,null);assert.deepEqual(view.shopping,[]);
+ }finally{for(const reset of restore.reverse())reset();await db.close();}
+});
