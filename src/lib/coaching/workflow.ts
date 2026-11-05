@@ -15,14 +15,15 @@ import {listFoods,listRecipes} from '../nutrition/service';
 import {createConversation,getConversation,containsSecret} from '../persistence/conversations';
 import {buildCoachHistory} from '../coach/history';
 import {acquireSharedRequest,persistentUsageMonitor} from '../persistence/shared-ai';
-import {createAdminSupabase} from '../supabase/admin';
+import {appendCoachTurn} from '../persistence/coach-turn';
+import type {WorkoutEvidence} from '../coach/workout-evidence';
 import {getActivePlan,getProfileGuard,getProposal,storeProposal,publishProposal} from './service';
 import type {ConversationPreferences} from './conversation-preferences';
 import {latestProposalReference} from './proposal-reference';
 import {generatePlanProposal} from './generation';
 import {validatePlanPayload} from './validation';
 
-export async function proposePlan(context:AuthContext,body:{message:string;conversationId?:string;proposalId?:string;scope?:PlanScope;goal?:UserProfile['goals'][number]},request:Pick<Request,'signal'>,admission?:{conversationId:string;config:CoachConfig;conversationPreferences?:ConversationPreferences;conversationGoal?:UserProfile['goals'][number]}){
+export async function proposePlan(context:AuthContext,body:{message:string;conversationId?:string;proposalId?:string;scope?:PlanScope;goal?:UserProfile['goals'][number]},request:Pick<Request,'signal'>,admission?:{conversationId:string;config:CoachConfig;conversationPreferences?:ConversationPreferences;conversationGoal?:UserProfile['goals'][number];workoutEvidence?:WorkoutEvidence}){
  if(containsSecret(body))throw new ApiError(400,'CREDENTIALS_REJECTED','Do not submit credentials.');
  const config=await planStep('configuration',()=>admission?.config??getCoachConfig());let release:(()=>Promise<void>)|undefined;let createdConversationId:string|undefined;let proposalReady=false;
  try{
@@ -37,12 +38,12 @@ export async function proposePlan(context:AuthContext,body:{message:string;conve
   let pending=null;
   if(reference){try{pending=await planStep('pending_proposal',()=>getProposal(context,reference));}catch(error){if(!(error instanceof ApiError&&error.status===404&&!body.proposalId))throw error;}}
   const history=savedConversation?buildCoachHistory(savedConversation.messages,body.message):[];
-  const payload=await generatePlanProposal({message:body.message,scope:body.scope,goal:body.goal,profile,existing,conversationPreferences:admission?.conversationPreferences,conversationGoal:admission?.conversationGoal,proposalUnderReview:pending?.status==='pending'&&new Date(pending.expires_at).getTime()>Date.now()&&pending.base_version===(existing?.version??0)?pending.payload:undefined,foods:[],recipes:[],loadNutrition:async()=>{const [{foods},recipes]=await Promise.all([listFoods(context),listRecipes(context)]);return {foods,recipes};},history},config,await planStep('admission',()=>persistentUsageMonitor(context.userId,config)),AbortSignal.any([request.signal,AbortSignal.timeout(config.requestTimeoutMs)]));
+  const payload=await generatePlanProposal({message:body.message,scope:body.scope,goal:body.goal,profile,existing,conversationPreferences:admission?.conversationPreferences,conversationGoal:admission?.conversationGoal,proposalUnderReview:pending?.status==='pending'&&new Date(pending.expires_at).getTime()>Date.now()&&pending.base_version===(existing?.version??0)?pending.payload:undefined,foods:[],recipes:[],loadNutrition:async()=>{const [{foods},recipes]=await Promise.all([listFoods(context),listRecipes(context)]);return {foods,recipes};},history,workoutEvidence:admission?.workoutEvidence},config,await planStep('admission',()=>persistentUsageMonitor(context.userId,config)),AbortSignal.any([request.signal,AbortSignal.timeout(config.requestTimeoutMs)]));
   const proposal=await planStep('persistence',()=>storeProposal(context,payload,existing?.version??0,preferenceFingerprint(profile),profileGuard));
   proposalReady=true;
   let historySaved=true;
   try{
-  const {error}=await createAdminSupabase().rpc('append_coach_turn',{p_user:context.userId,p_conversation:conversation.id,p_message:body.message,p_reply:`Proposed plan (not active): ${payload.rationale}\nReview proposal ${proposal.id} in the plan preview before confirming.`,p_category:'mixed',p_status:'ok',p_mode:'live',p_exercise_ids:[]});
+  const {error}=await appendCoachTurn({p_user:context.userId,p_conversation:conversation.id,p_message:body.message,p_reply:`Proposed plan (not active): ${payload.rationale}\nReview proposal ${proposal.id} in the plan preview before confirming.`,p_category:'mixed',p_status:'ok',p_mode:'live',p_exercise_ids:[]},admission?.workoutEvidence);
   if(error)throw new ApiError(503,'HISTORY_NOT_SAVED','Conversation update unavailable.');
   }catch(error){historySaved=false;logPlanDiagnostic('history',error,1,'warning');}
   // A valid stored preview can still be reviewed if optional chat synchronisation fails.

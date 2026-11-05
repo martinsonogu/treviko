@@ -23,7 +23,7 @@ test('training choices show library-derived muscles and only provided duration e
  const expected=choicesModule.workoutMuscles(plan.payload.days[0].exercises);for(const muscle of expected)assert.ok(html.includes(muscle));assert.deepEqual(choicesModule.workoutMuscles([{exerciseId:'unknown'}]),[]);assert.equal(JSON.stringify(plan),before);
 });
 test('resume takes precedence over starting and reports actual saved completed sets',()=>{
- const html=render(Choices,{plan,active:session,count:1});assert.match(html,/Continue your workout/);assert.match(html,/1 completed set saved/);assert.match(html,/Resume workout/);assert.match(html,new RegExp(`/training/workouts/${session.id}`));assert.doesNotMatch(html,/Start workout:/);
+ const html=render(Choices,{plan,active:session,count:1});assert.match(html,/Continue your workout/);assert.match(html,/1 completed set saved/);assert.match(html,/Resume workout/);assert.match(html,new RegExp(`/training/workouts/${session.id}`));assert.match(html,/disabled=""/);
  const paused=render(Choices,{plan:{...plan,status:'paused'},active:null,count:0});assert.doesNotMatch(paused,/Start workout:/);assert.match(paused,/Confirm an active training plan/);
  const review=render(Choices,{plan,active:null,count:0,needsReview:true});assert.match(review,/Review your exercises/);assert.doesNotMatch(review,/Start workout:/);
 });
@@ -35,7 +35,7 @@ test('Progress uses singular/plural counts, a real latest workout and clear empt
 });
 test('workout editor distinguishes immutable prescriptions, actual input and saved resume status',()=>{
  const Editor=load('src/components/workouts/WorkoutEditor.tsx').default;const html=render(Editor,{initial:session,previous:[]});assert.match(html,/Upper Body A/);assert.match(html,/Prescribed:/);assert.match(html,/Log your actual performance/);assert.match(html,/Ready to resume/);assert.match(html,/data-save-state="saved"/);assert.match(html,/completed/);assert.match(html,/inputMode="numeric"/i);assert.match(html,/Save progress/);
- const finished=render(Editor,{initial:completed,previous:[]});assert.match(finished,/Recorded performance/);assert.doesNotMatch(finished,/>Finish workout</);assert.equal(completed.snapshot.title,'Upper A');
+ const finished=render(Editor,{initial:completed,previous:[],reviewCompleted:true});assert.match(finished,/Recorded performance/);assert.doesNotMatch(finished,/>Finish workout</);assert.equal(completed.snapshot.title,'Upper A');
 });
 test('Training places execution before accessible plan reference without a duplicate primary heading',async()=>{
  const pageUser=load('src/lib/auth/page-user.ts'),view=load('src/lib/coaching/view.ts'),workouts=load('src/lib/workouts/service.ts'),Account=load('src/components/coaching/AccountPlan.tsx').default;

@@ -1,4 +1,6 @@
 import 'server-only';
+import {resolveActiveWorkout} from './training-state';
+import {supportsExternalLoad} from './measurement';
 import {z} from 'zod';
 import type {AuthContext} from '../auth/session';
 import {ApiError} from '../api/http';
@@ -22,13 +24,13 @@ export async function listWorkouts(context:AuthContext,cursor?:{before:string;be
  context.db.from('workout_sessions').select(columns).eq('user_id',context.userId).eq('status','in_progress').maybeSingle(),
  context.db.from('workout_sessions').select('id',{count:'exact',head:true}).eq('user_id',context.userId).eq('status','completed')]);
  for(const result of [recent,active,total])databaseError(result.error);
- const rows=z.array(sessionSchema).parse(recent.data??[]);const last=rows[29];return {recent:rows.slice(0,30),next:rows.length>30&&last?{before:last.finished_at!,beforeId:last.id}:null,active:active.data?sessionSchema.parse(active.data):null,completedCount:total.count??0};
+ const rows=z.array(sessionSchema).parse(recent.data??[]);const last=rows[29];return {recent:rows.slice(0,30),next:rows.length>30&&last?{before:last.finished_at!,beforeId:last.id}:null,active:resolveActiveWorkout(active.data?sessionSchema.parse(active.data):null,rows),completedCount:total.count??0};
 }
 export function snapshotDay(plan:NonNullable<Awaited<ReturnType<typeof getActivePlan>>>,weekday:number){
  const day=plan.payload.days.find(day=>day.weekday===weekday);if(!day)throw new ApiError(422,'SESSION_UNAVAILABLE','Choose a session from your active training plan.');
  return snapshotSchema.parse({title:day.name,weekday,warmup:day.warmup,recovery:day.recovery,exercises:day.exercises.map(item=>{
  const exercise=exercises.find(exercise=>exercise.id===item.exerciseId);if(!exercise)throw new ApiError(422,'EXERCISE_UNAVAILABLE','A prescribed exercise is unavailable. Review your plan with Kivo.');
- return {exerciseId:exercise.id,name:exercise.name,slug:exercise.slug,sets:item.sets,reps:item.reps,unit:item.unit,restSeconds:item.restSeconds,cue:item.cue,reason:item.reason,repetitionsInReserve:item.repetitionsInReserve,progression:item.progression,instructions:exercise.instructions,bodyweight:exercise.requiredEquipment.length===0};})});
+ return {exerciseId:exercise.id,name:exercise.name,slug:exercise.slug,sets:item.sets,reps:item.reps,unit:item.unit,restSeconds:item.restSeconds,cue:item.cue,reason:item.reason,repetitionsInReserve:item.repetitionsInReserve,progression:item.progression,instructions:exercise.instructions,bodyweight:exercise.requiredEquipment.length===0,loadApplicable:supportsExternalLoad(exercise)};})});
 }
 export async function startWorkout(context:AuthContext,input:unknown){
  const body=startSchema.parse(input);
@@ -48,3 +50,20 @@ export async function updateWorkout(context:AuthContext,id:string,input:unknown)
 export async function previousWorkouts(context:AuthContext,current:WorkoutSession){
  const {data,error}=await context.db.from('workout_sessions').select(columns).eq('user_id',context.userId).eq('status','completed').lt('finished_at',current.started_at).order('finished_at',{ascending:false}).limit(30);databaseError(error);return z.array(sessionSchema).parse(data??[]);
 }
+// Query each scheduled slot, not just the latest history page: old completions remain visible.
+export async function trainingCompletions(context:AuthContext,plan:{id:string;payload:{days:{weekday:number}[]}}|null){
+ if(!plan)return {} as Record<number,WorkoutSession>;
+ const pairs=await Promise.all(plan.payload.days.map(async day=>{const {data,error}=await context.db.from('workout_sessions').select(columns).eq('user_id',context.userId).eq('plan_id',plan.id).eq('weekday',day.weekday).eq('status','completed').order('finished_at',{ascending:false}).order('id',{ascending:false}).limit(1).maybeSingle();databaseError(error);return [day.weekday,data?sessionSchema.parse(data):null] as const;}));
+ return Object.fromEntries(pairs.filter((pair):pair is readonly [number,WorkoutSession]=>pair[1]!==null));
+}
+// Deterministic, owner-scoped completed-history reads used by Coach; no model-authored query.
+export async function queryCompletedWorkouts(context:AuthContext,options:{limit:number;ids?:string[];from?:string;until?:string;before?:string}){
+ const limit=z.number().int().min(1).max(30).parse(options.limit);
+ let query=context.db.from('workout_sessions').select(columns).eq('user_id',context.userId).eq('status','completed').order('finished_at',{ascending:false}).order('id',{ascending:false}).limit(limit);
+ if(options.ids)query=query.in('id',z.array(z.string().uuid()).min(1).max(2).parse(options.ids));
+ if(options.from)query=query.gte('finished_at',z.iso.datetime().parse(options.from));
+ if(options.until)query=query.lt('finished_at',z.iso.datetime().parse(options.until));
+ if(options.before)query=query.lt('finished_at',z.iso.datetime({offset:true}).parse(options.before));
+ const {data,error}=await query;if(error)throw new ApiError(503,'WORKOUT_HISTORY_UNAVAILABLE','Your saved workouts could not be loaded. Please try again; your logs have not changed.');return z.array(sessionSchema).parse(data??[]);
+}
+export async function getActiveWorkout(context:AuthContext){const {data,error}=await context.db.from('workout_sessions').select(columns).eq('user_id',context.userId).eq('status','in_progress').maybeSingle();if(error)throw new ApiError(503,'WORKOUT_HISTORY_UNAVAILABLE','Your current workout could not be checked. Please try again.');return data?sessionSchema.parse(data):null;}
