@@ -12,7 +12,7 @@ type SaveDependencies={
 };
 class ProfileSaveError extends Error {}
 export async function persistProfileAndNavigate(profile:UserProfile,options:ProfileSaveOptions,dependencies:SaveDependencies) {
- const {lock,router}=dependencies;
+ const {lock,router,request}=dependencies;
  if(lock.inFlight)return 'ignored' as const;
  lock.inFlight=true;
  let navigating=false;
@@ -21,7 +21,7 @@ export async function persistProfileAndNavigate(profile:UserProfile,options:Prof
   const validation=userProfileSchema.safeParse({...profile,onboardingStep:options.nextStep,onboardingComplete:options.finish||profile.onboardingComplete});
   if(!validation.success){const issue=validation.error.issues[0];throw new ProfileSaveError(`${issue.path.join('.')}: ${issue.message}`);}
   const expected=validation.data;
-  const response=await dependencies.request('/api/v1/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(expected)});
+  const response=await request('/api/v1/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(expected)});
   const body=await response.json();
   if(!response.ok||body.error)throw new ProfileSaveError(typeof body.error?.message==='string'?body.error.message:'Your preferences were not saved. Please try again.');
   const saved=userProfileSchema.safeParse(body.data);

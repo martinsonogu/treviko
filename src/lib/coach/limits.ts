@@ -1,6 +1,18 @@
 import 'server-only';
+export type CoachLimitCode='RATE_LIMITED'|'BUSY'|'TOKEN_BUDGET'|'COST_BUDGET';
+export function nextBudgetReset(now=Date.now()){const date=new Date(now);date.setUTCHours(24,0,0,0);return date.toISOString();}
+export function secondsUntilBudgetReset(now=Date.now()){return Math.max(1,Math.ceil((Date.parse(nextBudgetReset(now))-now)/1000));}
 export class CoachLimitError extends Error {
-  constructor(public code: 'RATE_LIMITED' | 'BUSY' | 'TOKEN_BUDGET', public retryAfter = 60) { super(code); }
+ readonly retryAfter:number;readonly resetAt?:string;
+ constructor(public code:CoachLimitCode,retryAfter?:number,resetAt?:string){super(code);const daily=code==='TOKEN_BUDGET'||code==='COST_BUDGET';this.retryAfter=retryAfter??(daily?secondsUntilBudgetReset():60);this.resetAt=daily?(resetAt??nextBudgetReset()):undefined;}
+}
+export function coachLimitMessage(error:CoachLimitError){
+ switch(error.code){
+  case 'RATE_LIMITED':return 'Too many coaching requests this minute. Please wait briefly and try again.';
+  case 'BUSY':return 'Another coaching request is still running. Wait for it to finish before retrying.';
+  case 'COST_BUDGET':return `The daily AI cost budget cannot cover this response. Try again after ${new Date(error.resetAt!).toUTCString()}.`;
+  case 'TOKEN_BUDGET':return `The daily AI token budget cannot cover the next response reservation. Try again after ${new Date(error.resetAt!).toUTCString()}.`;
+ }
 }
 export class CoachLimiter {
   private buckets = new Map<string, { count: number; expires: number }>();

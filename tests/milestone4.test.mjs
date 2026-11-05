@@ -95,7 +95,7 @@ test('diet, dislikes and allergen filtering fail closed when allergen provenance
 test('account deletion requires reauthentication and deletes only the verified user',async()=>{
  const calls=[];const context={userId:A,email:user.email,db:{auth:{signOut:async()=>({error:null})}}};
  const verifier={auth:{signInWithPassword:async()=>({data:{user},error:null}),signOut:async()=>({error:null})}};
- await stubbed([[session,'requireUser',async()=>context],[supabase,'createPasswordVerifier',()=>verifier],[admin,'createAdminSupabase',()=>({auth:{admin:{deleteUser:async(...args)=>{calls.push(args);return {error:null};}}}})]],async()=>{
+ await stubbed([[load('src/lib/auth/deletion-notice.ts'),'deletionNoticeSecret',()=> 'test-only-deletion-proof-secret'],[session,'requireUser',async()=>context],[supabase,'createPasswordVerifier',()=>verifier],[admin,'createAdminSupabase',()=>({auth:{admin:{deleteUser:async(...args)=>{calls.push(args);return {error:null};}}}})]],async()=>{
  assert.equal((await authHandler('delete')(request({password:'correct-password',confirmation:'wrong'},'DELETE'))).status,400);
  const response=await authHandler('delete')(request({password:'correct-password',confirmation:'DELETE MY ACCOUNT'},'DELETE'));assert.equal(response.status,200);assert.deepEqual(calls,[[A,false]]);
  verifier.auth.signInWithPassword=async()=>({data:{user:{...user,id:'other'}},error:null});assert.equal((await authHandler('delete')(request({password:'bad',confirmation:'DELETE MY ACCOUNT'},'DELETE'))).status,401);assert.equal(calls.length,1);

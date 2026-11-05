@@ -20,3 +20,9 @@ export async function updateProfile(context: AuthContext, patch: ProfilePatch) {
   if (error) throw new ApiError(503, 'SAVE_FAILED', 'Your preferences were not saved. Please try again.');
   return getProfile(context);
 }
+
+// Read only the saved name needed by the authenticated header, using the user's RLS client.
+export async function getProfileDisplayName(context:AuthContext):Promise<string>{
+ const {data,error}=await context.db.from('profiles').select('display_name').eq('user_id',context.userId).single();
+ return !error&&typeof data?.display_name==='string'?data.display_name:'';
+}

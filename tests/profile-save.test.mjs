@@ -56,13 +56,13 @@ test('completed onboarding redirects home while /profile still renders saved pre
  const saved={...emptyProfile(),displayName:'Saved user',equipment:['dumbbells'],onboardingComplete:true,onboardingStep:6};const requested=[];
  session.requirePageUser=async path=>{requested.push(path);return {userId:'verified-user'};};service.getProfile=async()=>structuredClone(saved);
  try{
-  await assert.rejects(()=>contentOfPage('src/app/onboarding/page.tsx')(),error=>String(error.digest).includes('NEXT_REDIRECT')&&String(error.digest).includes(';/;'));
-  const editor=await contentOfPage('src/app/profile/page.tsx')();assert.deepEqual(editor.props.initial,saved);assert.equal(editor.props.onboarding,false);
-  service.getProfile=async()=>({...saved,onboardingComplete:false});const onboarding=await contentOfPage('src/app/onboarding/page.tsx')();assert.equal(onboarding.props.onboarding,true);assert.equal(onboarding.props.initial.onboardingComplete,false);assert.deepEqual(requested,['/onboarding','/profile','/onboarding']);
+  await assert.rejects(()=>contentOfPage('src/app/(experience)/onboarding/page.tsx')(),error=>String(error.digest).includes('NEXT_REDIRECT')&&String(error.digest).includes(';/;'));
+  const editor=await contentOfPage('src/app/(experience)/profile/page.tsx')();assert.deepEqual(editor.props.initial,saved);assert.equal(editor.props.onboarding,false);
+  service.getProfile=async()=>({...saved,onboardingComplete:false});const onboarding=await contentOfPage('src/app/(experience)/onboarding/page.tsx')();assert.equal(onboarding.props.onboarding,true);assert.equal(onboarding.props.initial.onboardingComplete,false);assert.deepEqual(requested,['/onboarding','/profile','/onboarding']);
  }finally{session.requirePageUser=previousUser;service.getProfile=previousProfile;}
 });
 test('Coach loading status is accessible, distinguishes generation and disappears when idle',()=>{
- const generating=renderToStaticMarkup(React.createElement(Loading,{restoring:false,busy:true,generating:true}));assert.match(generating,/role="status"/);assert.match(generating,/aria-live="polite"/);assert.match(generating,/loadingSpinner[^>]*aria-hidden="true"/);assert.match(generating,/Coach is preparing your response/);
+ const generating=renderToStaticMarkup(React.createElement(Loading,{restoring:false,busy:true,generating:true}));assert.match(generating,/role="status"/);assert.match(generating,/aria-live="polite"/);assert.match(generating,/visuallyHidden/);assert.doesNotMatch(generating,/loadingSpinner/);assert.match(generating,/Kivo is typing/);
  const idle=renderToStaticMarkup(React.createElement(Loading,{restoring:false,busy:false,generating:false}));assert.doesNotMatch(idle,/loadingSpinner|preparing your response/);
  const restoring=renderToStaticMarkup(React.createElement(Loading,{restoring:true,busy:false,generating:false}));assert.match(restoring,/Loading your saved conversation/);
  const managing=renderToStaticMarkup(React.createElement(Loading,{restoring:false,busy:true,generating:false}));assert.match(managing,/Updating your conversation/);assert.doesNotMatch(managing,/preparing your response/);

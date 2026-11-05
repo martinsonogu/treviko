@@ -11,8 +11,8 @@ const {proposalResponseSchema}=load('src/lib/coaching/schema.ts');
 const {planFailure}=load('src/lib/coaching/errors.ts');
 const profile={...emptyProfile(),experience:'intermediate',equipment:['dumbbells'],trainingDays:3,sessionMinutes:30,goals:['muscle_gain']};
 const config=getCoachConfig({OPENAI_API_KEY:'mock',OPENAI_MODEL:'mock'});
-const draft={rationale:'A balanced starting option.',assumptions:[],experience:'intermediate',equipment:['dumbbells'],sessionMinutes:30,days:[1,3,5].map(weekday=>({weekday,name:'Training',exerciseIds:['shrug']})),meals:[{slot:1,name:'Lentils and vegetables',guidance:'Review ingredient labels and preparation.',recipeId:null}]};
-const scope={category:'fitness',outcome:'allowed',topic:'mixed',safety:'none',injection:false,needsExercises:true,muscles:[]};
+const draft={rationale:'A balanced starting option.',assumptions:[],experience:'intermediate',equipment:['dumbbells'],sessionMinutes:30,days:[1,3,5].map(weekday=>({weekday,name:'Training',exerciseIds:['squat','dumbbell-romanian-deadlift','dumbbell-floor-press','dumbbell-reverse-fly']})),meals:[{slot:1,name:'Lentils and vegetables',guidance:'Review ingredient labels and preparation.',recipeId:null}]};
+const scope={availableEquipment:null,trainingRequested:true,nutritionRequested:true,requestedGoal:null,availableMinutes:null,trainingDays:null,excludedExerciseIds:[],category:'fitness',outcome:'allowed',topic:'mixed',safety:'none',injection:false,needsExercises:true,muscles:[]};
 const review={inScope:true,safe:true,grounded:true,preferencesRespected:true,private:true};
 const context={message:'Build my training and daily meals.',profile,existing:null,foods:[],recipes:[],history:[]};
 function fixture(outputs=[draft]){
@@ -52,7 +52,7 @@ test('two invalid responses fail with a specific category and never reach review
  const mock=fixture([{bad:'PRIVATE_MODEL_TEXT sk-secret-and-sensitive'}]);await assert.rejects(generate(mock),error=>error.code==='PLAN_OUTPUT_INVALID');assert.equal(mock.calls.length,3);assert.equal(mock.calls.some(c=>c.text.format.name==='treviko_review'),false);assert.equal(logs.length,2);assert.doesNotMatch(JSON.stringify(logs),/PRIVATE_MODEL_TEXT|sk-secret|sensitive/);
 }));
 test('missing preferences and nutrition data yield labelled defaults and qualitative meals',async()=>{
- const missing=emptyProfile(),bodyweight=planCandidates(missing)[0];const mock=fixture([{...draft,experience:'beginner',equipment:[],days:[{weekday:1,name:'Starting option',exerciseIds:[bodyweight.id]}]}]);
+ const missing=emptyProfile();const mock=fixture([{...draft,experience:'beginner',equipment:[],days:[1,3,5].map(weekday=>({weekday,name:'Starting option',exerciseIds:['bodyweight-squat','heel-dig-bridge','push-up','prone-w-raise']}))}]);
  const plan=await generate(mock,{...context,profile:missing});assert.deepEqual(plan.equipment,[]);assert.ok(plan.assumptions.some(a=>a.includes('Bodyweight')));assert.ok(plan.assumptions.some(a=>a.includes('not saved')));assert.equal(plan.meals[0].recipeId,null);assert.equal('nutrition' in plan.meals[0],false);
 });
 test('incomplete output gets at most one compact repair using the same output/token budget',async()=>withLogs(async()=>{

@@ -115,7 +115,7 @@ test('history stays chronological/bounded and quarantines declined turns without
 test('SDK receives explicit conversational instructions, bounded history and separately sourced facts',async()=>{
  const calls=[];const provider=createOpenAIProvider(config(),new CoachUsageMonitor(),{responses:{parse:async parameters=>{calls.push(parameters);return {status:'completed',output_parsed:parameters.text.format.name==='treviko_scope'?decision('greeting'):parameters.text.format.name==='treviko_coach'?{message:'Hi! We can work on your training routine.',exerciseIds:[]}:review,usage:{input_tokens:30,output_tokens:20}};}}});
  const result=await runCoach(input('Hello'),config(),()=>provider,new AbortController().signal);assert.equal(result.httpStatus,200);
- assert.equal(calls.length,3);assert.match(calls[1].instructions,/Greet people naturally/);assert.match(calls[2].instructions,/friendly greetings/);
+ assert.equal(calls.length,3);assert.match(calls[1].instructions,/Greet people naturally/);assert.match(calls[1].instructions,/You are Kivo, Treviko's AI personal coach/);assert.match(calls[1].instructions,/not a human trainer/);assert.match(calls[1].instructions,/do not repeat an introduction/);assert.match(calls[1].instructions,/No diagnosis, treatment/);assert.match(calls[1].instructions,/ONLY come from supplied candidates/);assert.match(calls[2].instructions,/friendly greetings/);
  const payload=JSON.parse(calls[1].input[0].content);assert.ok(payload.request.providedPreferences);assert.ok(payload.request.conversationContext);assert.equal(payload.request.message,'Hello');assert.equal(calls[0].store,false);
 });
 test('conversation restoration keeps message order and UUID in URL without copying conversation text',()=>{

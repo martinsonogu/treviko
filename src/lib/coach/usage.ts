@@ -1,5 +1,5 @@
 import 'server-only';
-import { CoachLimitError } from './limits';
+import { CoachLimitError,secondsUntilBudgetReset,nextBudgetReset } from './limits';
 export type ProviderUsage = { inputTokens: number; outputTokens: number };
 export type UsageStage = 'scope' | 'coach' | 'review';
 export type UsageFinish = (stage: UsageStage, model: string, success: boolean, usage: ProviderUsage | null, prices: {input?:number;output?:number})=>void|Promise<void>;
@@ -14,7 +14,7 @@ export class CoachUsageMonitor {
   reserve(tokens: number, limit: number) {
     const today = new Date(this.now()).toISOString().slice(0, 10);
     if (this.day !== today) { this.day = today; this.committed = 0; }
-    if (this.committed + this.reserved + tokens > limit) throw new CoachLimitError('TOKEN_BUDGET', 3600);
+    if (this.committed + this.reserved + tokens > limit) throw new CoachLimitError('TOKEN_BUDGET',secondsUntilBudgetReset(this.now()),nextBudgetReset(this.now()));
     this.reserved += tokens;
     let finished = false;
     return (stage: UsageStage, model: string, success: boolean, usage: ProviderUsage | null, prices: { input?: number; output?: number }) => {

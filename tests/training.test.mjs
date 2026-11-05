@@ -110,7 +110,7 @@ test('instruction tabs default to movement with optional equipment hidden', () =
 });
 test('all existing pages still render and coach retains its contract', async () => {
   for (const name of ['', 'training/', 'coach/', 'nutrition/', 'progress/']) {
-    const Page = load(`src/app/${name}page.tsx`).default;
+    const Page = load(`src/app/(experience)/${name}page.tsx`).default;
     assert.ok(renderToStaticMarkup(React.createElement(Page)).length > 20);
   }
   const health = await (await load('src/app/api/v1/health/route.ts').GET()).json(); assert.equal(health.status, 'ok');

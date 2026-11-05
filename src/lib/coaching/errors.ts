@@ -4,7 +4,7 @@ import {safeValidationIssues as validationIssues} from '../coach/diagnostics';
 export {safeValidationIssues as validationIssues} from '../coach/diagnostics';
 import {ApiError} from '../api/http';
 import {ProviderFailure} from '../coach/provider';
-import {CoachLimitError} from '../coach/limits';
+import {CoachLimitError,coachLimitMessage} from '../coach/limits';
 export type PlanStage='request'|'configuration'|'conversation'|'admission'|'profile'|'active_plan'|'nutrition'|'pending_proposal'|'input'|'scope'|'draft'|'validation'|'review'|'persistence'|'history'|'cleanup';
 export function logPlanDiagnostic(stage:PlanStage,error:unknown,attempt=1,outcome:'failed'|'repairing'|'warning'='failed'){
  const category=error instanceof ApiError||error instanceof ProviderFailure||error instanceof CoachLimitError?error.code:error instanceof z.ZodError?'SCHEMA_INVALID':'UNEXPECTED_ERROR';
@@ -13,7 +13,7 @@ export function logPlanDiagnostic(stage:PlanStage,error:unknown,attempt=1,outcom
 }
 export function planFailure(stage:PlanStage,error:unknown):ApiError{
  if(error instanceof ApiError)return error;
- if(error instanceof CoachLimitError)return new ApiError(429,error.code,'Coach usage or concurrency limit reached. Try again shortly.');
+ if(error instanceof CoachLimitError)return new ApiError(429,error.code,coachLimitMessage(error),error.retryAfter);
  if(error instanceof ProviderFailure){
   switch(error.code){
    case 'PROVIDER_TIMEOUT':return new ApiError(504,'PLAN_PROVIDER_TIMEOUT','The AI service timed out while preparing your plan. Your saved plan was not changed. Please try again.');

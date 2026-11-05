@@ -1,115 +1,100 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { CoachPayload } from '@/lib/coach/format';
-import type { CoachProfile } from '@/lib/coach/schemas';
+import {useEffect,useRef,useState,type FormEvent} from 'react';
+import {useRouter} from 'next/navigation';
+import type {CoachPayload} from '@/lib/coach/format';
+import type {CoachProfile} from '@/lib/coach/schemas';
+import {proposalResponseSchema,proposalRowSchema,type PlanProposal} from '@/lib/coaching/schema';
 import CoachLoadingStatus from './CoachLoadingStatus';
-import PlanWorkspace from '@/components/coaching/PlanWorkspace';
-import CoachPreferences from '@/components/coach/CoachPreferences';
+import KivoAvatar from './KivoAvatar';
+import CoachMessage from './CoachMessage';
+import KivoTypingIndicator,{typingLabel,type TypingOperation} from './KivoTypingIndicator';
+import {useConversationScroll} from './conversation-scroll';
+import InlineProposal from './InlineProposal';
+import CoachDialog from './CoachDialog';
+import {useCoachViewport} from './viewport';
+import CoachPreferences from './CoachPreferences';
 import {conversationIdFromSearch,conversationLocation,savedChatEntries,replyMatchesConversation,type ChatEntry,type SavedChat} from './conversation-state';
 import ExerciseCard from '@/components/training/ExerciseCard';
 
-type Entry=ChatEntry;
-type Conversation={id:string;title:string};
-type Availability = { mode: string; available: boolean; message: string; anonymous: boolean };
-const suggestions = ['I want to train my traps.', 'Suggest a Nigerian high-protein dinner.', 'I prefer Indian vegetarian food.', 'How should I plan rest days?'];
-export default function Coach({initialProfile}:{initialProfile:CoachProfile}) {
-  const [message, setMessage] = useState('');
-  const [planOpen,setPlanOpen]=useState(false);
-  const [planMessage,setPlanMessage]=useState('');
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [profile, setProfile] = useState<CoachProfile>(initialProfile);
-  const [conversations,setConversations]=useState<Conversation[]>([]);
-  const [conversationId,setConversationId]=useState<string|null>(null);
-  const [title,setTitle]=useState('');
-  const [restoring,setRestoring]=useState(true);
-  const [generating,setGenerating]=useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [availability, setAvailability] = useState<Availability | null>(null);
-  const active = useRef<AbortController | null>(null);
-  const version = useRef(0);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const logRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    const query=new URLSearchParams(window.location.search);const prompt=query.get('prompt')?.slice(0,2000)??'';
-    queueMicrotask(()=>{if(controller.signal.aborted)return;if(query.get('plan')==='1'){setPlanOpen(true);setPlanMessage(prompt);}else if(prompt)setMessage(prompt);});
-    fetch('/api/v1/coach/status', { signal: controller.signal, cache: 'no-store' }).then(async response => {
-      const body = await response.json();
-      if (!controller.signal.aborted) setAvailability(response.ok?body:{mode:'unavailable',available:false,message:body.error?.message||'Please sign in again to use Coach.',anonymous:false});
-    }).catch(() => { if (!controller.signal.aborted) setAvailability({ mode: 'unavailable', available: false, message: 'Could not check AI availability. Reload to try again.', anonymous: true }); });
-    fetch('/api/v1/coach/conversations',{signal:controller.signal,cache:'no-store'}).then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.error?.message||'Could not load saved conversations.');if(!controller.signal.aborted)setConversations(body.data);}).catch(cause=>{if(!controller.signal.aborted)setError(cause.message);});
-    const requested=conversationIdFromSearch(window.location.search);
-    const restoreVersion=version.current;
-    const restore=requested?fetch(`/api/v1/coach/conversations/${requested}`,{signal:controller.signal,cache:'no-store'}).then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.error?.message||'Saved conversation could not load.');return body.data as SavedChat;}):Promise.resolve(null);
-    restore.then(chat=>{if(controller.signal.aborted||version.current!==restoreVersion)return;if(chat){setConversationId(chat.id);setTitle(chat.title);setEntries(savedChatEntries(chat));}}).catch(cause=>{if(!controller.signal.aborted&&version.current===restoreVersion)setError(cause instanceof Error?cause.message:'Saved conversation could not load.');}).finally(()=>{if(!controller.signal.aborted&&version.current===restoreVersion)setRestoring(false);});
-    return () => { controller.abort(); active.current?.abort(); };
-  }, []);
-  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [entries, busy]);
-  function rememberConversation(id:string|null){window.history.replaceState(null,'',conversationLocation(window.location.pathname,window.location.search,window.location.hash,id));}
-  function reset() {
-    version.current++; active.current?.abort(); setBusy(false); setGenerating(false); setRestoring(false); rememberConversation(null); setEntries([]); setProfile(initialProfile); setConversationId(null); setTitle(''); setMessage(''); setError(''); inputRef.current?.focus();
-  }
-  async function send(event: FormEvent) {
-    event.preventDefault();
-    if (!message.trim() || busy || restoring || !availability?.available) return;
-    const sent = message.trim();const pendingId=crypto.randomUUID();
-    setEntries(current => [...current, {id:pendingId, role: 'user', text: sent }]); setMessage(''); setGenerating(true); setBusy(true); setError('');
-    const controller = new AbortController(); active.current = controller;
-    const requestVersion = ++version.current;
-    try {
-      let id=conversationId;
-      if(!id){const created=await fetch('/api/v1/coach/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'New conversation'}),signal:controller.signal});const value=await created.json();if(!created.ok)throw new Error(value.error?.message||'Could not start a saved conversation.');if(requestVersion!==version.current)return;id=value.data.id;setConversationId(id);rememberConversation(id);setTitle(value.data.title);setConversations(current=>[value.data,...current]);}
-      const response = await fetch('/api/v1/coach/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: sent, conversationId:id, profile }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(95000)]) });
-      const body: CoachPayload = await response.json();
-      if (requestVersion !== version.current) return;
-      if (!response.ok) {
-        setEntries(current=>current.filter(entry=>entry.id!==pendingId));
-        const retry = response.headers.get('retry-after');
-        setError((body.message || (body as unknown as {error?:{message?:string}}).error?.message || 'The AI coach could not respond. Please try again.') + (response.status === 429 && retry ? ` Try again in about ${retry} seconds.` : ''));
-        setMessage(sent);
-      } else {
-        if(!id||!replyMatchesConversation(id,body))throw new Error('Conversation mismatch');
-        setEntries(current => [...current, { role: 'coach', text: body.message, response: body }]);
-      }
-    } catch {
-      if (requestVersion === version.current && !controller.signal.aborted) { setEntries(current=>current.filter(entry=>entry.id!==pendingId));setError('Could not confirm the saved reply. Reload this conversation before retrying; a reply may already have been saved.'); setMessage(sent); }
-    } finally { if (requestVersion === version.current) { setBusy(false); setGenerating(false); active.current = null; inputRef.current?.focus(); } }
-  }
-  async function openConversation(id:string){
-    const operation=++version.current;active.current?.abort();const controller=new AbortController();active.current=controller;setGenerating(false);setBusy(true);setError('');
-    try{const response=await fetch(`/api/v1/coach/conversations/${id}`,{cache:'no-store',signal:controller.signal});const body=await response.json();if(operation!==version.current)return;if(!response.ok)throw new Error(body.error?.message||'Conversation could not load.');setConversationId(id);rememberConversation(id);setTitle(body.data.title);setEntries(savedChatEntries(body.data));setMessage('');}
+type Conversation={id:string;title:string;updated_at?:string};
+type Availability={available:boolean;message:string};
+const suggestions:{prompt:string;operation:TypingOperation}[]=[{prompt:'How can I build muscle?',operation:'reply'},{prompt:'Create my training plan.',operation:'workout'},{prompt:'Explain my current workout.',operation:'reply'},{prompt:'Help me plan meals to support my training.',operation:'meals'}];
+export default function Coach({initialProfile}:{initialProfile:CoachProfile}){
+ const router=useRouter();const frameRef=useRef<HTMLDivElement>(null);useCoachViewport(frameRef);
+ const [message,setMessage]=useState('');const [selectedProposalId,setSelectedProposalId]=useState<string|null>(null);const [entries,setEntries]=useState<ChatEntry[]>([]);const [profile,setProfile]=useState(initialProfile);
+ const [conversations,setConversations]=useState<Conversation[]>([]);const [conversationId,setConversationId]=useState<string|null>(null);const [title,setTitle]=useState('');
+ const [restoring,setRestoring]=useState(true);const [busy,setBusy]=useState(false);const [generating,setGenerating]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
+ const [availability,setAvailability]=useState<Availability|null>(null);const [historyOpen,setHistoryOpen]=useState(false);const [settingsOpen,setSettingsOpen]=useState(false);
+ const active=useRef<AbortController|null>(null);const version=useRef(0);const lock=useRef(false);const inputRef=useRef<HTMLTextAreaElement>(null);const logRef=useRef<HTMLDivElement>(null);
+ const [typingOperation,setTypingOperation]=useState<TypingOperation>('reply');const draftOperation=useRef<{message:string;operation:TypingOperation}|null>(null);
+ const scrolling=useConversationScroll(logRef,entries,busy,generating);
+ function remember(id:string|null){window.history.replaceState(null,'',conversationLocation(window.location.pathname,window.location.search,window.location.hash,id));}
+ async function loadProposal(id:string,signal?:AbortSignal){const response=await fetch(`/api/v1/coaching/plan/proposals/${id}`,{cache:'no-store',signal});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||'This proposal could not load.');return proposalRowSchema.parse(body.data);}
+ async function restoreEntries(chat:SavedChat,signal:AbortSignal){
+  const rows=savedChatEntries(chat);const recent=rows.filter(row=>row.proposalId).slice(-5);
+  await Promise.all(recent.map(async row=>{try{row.proposal=await loadProposal(row.proposalId!,signal);}catch{/* History text remains available even if its old proposal is unavailable. */}}));return rows;
+ }
+ useEffect(()=>{
+  const controller=new AbortController();active.current=controller;const operation=version.current;
+  const query=new URLSearchParams(window.location.search);queueMicrotask(()=>{if(!controller.signal.aborted)setMessage(query.get('prompt')?.slice(0,2000)??'');});
+  fetch('/api/v1/coach/status',{signal:controller.signal,cache:'no-store'}).then(async response=>{const body=await response.json();if(!controller.signal.aborted)setAvailability(response.ok?body:{available:false,message:body.error?.message||'Kivo is unavailable.'});}).catch(()=>{if(!controller.signal.aborted)setAvailability({available:false,message:'Could not check availability. Reload to try again.'});});
+  fetch('/api/v1/coach/conversations',{signal:controller.signal,cache:'no-store'}).then(async response=>{const body=await response.json();if(!response.ok)throw new Error('Saved conversations could not load.');if(!controller.signal.aborted)setConversations(body.data);}).catch(cause=>{if(!controller.signal.aborted)setError(cause.message);});
+  const requested=conversationIdFromSearch(window.location.search);
+  (async()=>{try{if(requested){const response=await fetch(`/api/v1/coach/conversations/${requested}`,{signal:controller.signal,cache:'no-store'});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||'Saved conversation could not load.');const rows=await restoreEntries(body.data,controller.signal);if(!controller.signal.aborted&&version.current===operation){setConversationId(requested);setTitle(body.data.title);setEntries(rows);}}}catch(cause){if(!controller.signal.aborted&&version.current===operation)setError(cause instanceof Error?cause.message:'Saved conversation could not load.');}finally{if(!controller.signal.aborted&&version.current===operation){setRestoring(false);active.current=null;}}})();
+  return()=>{controller.abort();active.current?.abort();};
+ // All restoration operates on the mount's initial URL; later switching uses openConversation.
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[]);
 
-    catch(cause){if(operation===version.current&&!controller.signal.aborted)setError(cause instanceof Error?cause.message:'Could not load.');}
-    finally{if(operation===version.current){setBusy(false);active.current=null;}}
-  }
-  async function manageConversation(remove=false){
-    if(!conversationId)return;const operation=version.current;setBusy(true);setError('');
-    try{const response=await fetch(`/api/v1/coach/conversations/${conversationId}`,{method:remove?'DELETE':'PATCH',headers:remove?undefined:{'Content-Type':'application/json'},body:remove?undefined:JSON.stringify({title})});const body=await response.json();if(operation!==version.current)return;if(!response.ok)throw new Error(body.error?.message||'Conversation update failed.');if(remove){setConversations(current=>current.filter(c=>c.id!==conversationId));reset();}else setConversations(current=>current.map(c=>c.id===conversationId?{...c,title}:c));}
-    catch(cause){if(operation===version.current)setError(cause instanceof Error?cause.message:'Could not update.');}
-    finally{if(operation===version.current)setBusy(false);}
-  }
-  return <div className="stack"><header><p className="eyebrow">TREVIKO COACH</p><h1>Build your rhythm.</h1><p className="muted">Training, recovery and food that fits your life.</p>
-    <p className="notice" role="status">{availability ? availability.message : 'Checking live AI configuration…'}</p>
-    <p className="muted">Conversations are saved to your account after each successful response. A bounded recent history and relevant preferences are sent to OpenAI. <Link className="textbutton" href="/profile">Edit saved preferences →</Link></p>
-  </header>
-    <details className="planEntry" open={planOpen} onToggle={event=>setPlanOpen(event.currentTarget.open)}><summary>Create or adjust my shared plan</summary>{planOpen&&<PlanWorkspace key={planMessage} initialMessage={planMessage} conversationId={conversationId}/>}</details>
-    <section className="card cardbody stack"><label className="field">Saved conversations<select value={conversationId??''} disabled={busy||restoring} onChange={event=>{if(event.target.value)void openConversation(event.target.value);else reset();}}><option value="">New conversation</option>{conversations.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}</select></label>{conversationId&&<><label className="field">Conversation title<input maxLength={100} value={title} onChange={event=>setTitle(event.target.value)}/></label><div className="chips"><button className="chip" disabled={busy} onClick={()=>{void openConversation(conversationId);}}>Reload saved chat</button><button className="chip" disabled={busy||!title.trim()} onClick={()=>{void manageConversation();}}>Rename</button><button className="chip" disabled={busy} onClick={()=>{void manageConversation(true);}}>Delete saved conversation</button></div></>}</section>
-    <CoachPreferences profile={profile} onChange={setProfile} saved />
-    <div className="sectionheading"><h2>Your conversation</h2><button className="textbutton" type="button" onClick={reset}>Start fresh conversation</button></div>
-    <div className="chat coachChat" role="log" aria-label="Coach conversation" aria-live="polite" aria-relevant="additions" ref={logRef}>
-      {!entries.length && <div className="bubble coach"><strong>What would you like to work on?</strong><p>Ask about training, nutrition or recovery. For exercise cards, confirm your experience and equipment above.</p></div>}
-      {entries.map((entry, index) => <div key={index} className={`chatEntry ${entry.role}`}><div className={`bubble ${entry.role}`}><span className="chatSpeaker">{entry.role === 'user' ? 'You' : entry.response?.mode === 'live' ? 'Treviko · Live AI' : 'Treviko · Guidance'}</span><p className="messageText">{entry.text}</p></div>
-        {entry.response?.exercises?.length ? <div className="cards chatExercises" aria-label="Recommended library exercises">{entry.response.exercises.map(exercise => <ExerciseCard key={exercise.id} exercise={exercise} />)}</div> : null}
-      </div>)}
-    </div>
-    <CoachLoadingStatus restoring={restoring} busy={busy} generating={generating}/>
-    {!entries.length && <div className="chips" aria-label="Suggested prompts">{suggestions.map(prompt => <button className="chip promptChip" type="button" key={prompt} onClick={() => { setMessage(prompt); inputRef.current?.focus(); }}>{prompt}</button>)}</div>}
-    {error && <p role="alert" className="notice">{error}</p>}
-    <form onSubmit={send} className="chatForm coachForm"><label className="field">Message your coach<textarea ref={inputRef} rows={3} value={message} maxLength={2000} onChange={event => setMessage(event.target.value)} placeholder="What would you like help with?" aria-describedby="coach-message-limit" /></label><button className="button" disabled={restoring || busy || !message.trim() || !availability?.available} type="submit">{busy ? 'Working…' : 'Send →'}</button></form>
-    <button className="textbutton" type="button" disabled={busy||restoring||!message.trim()} onClick={()=>{setPlanMessage(message);setPlanOpen(true);document.getElementById("plan-workspace")?.scrollIntoView({behavior:"instant"});}}>Use this message to propose a plan change →</button>
-    <small id="coach-message-limit" className="muted">{message.length}/2000 characters. Enter adds a new line; use Send to submit.</small>
-    <p className="notice">General fitness and nutrition education, not medical diagnosis or treatment. Use Nutrition for source-backed food values and deterministic serving totals; this chat gives qualitative nutrition guidance. Exercise images remain labelled placeholders. Scope and safety checks can make mistakes.</p>
-  </div>;
+ useEffect(()=>{const input=inputRef.current;if(input){input.style.height='auto';input.style.height=`${Math.min(136,Math.max(56,input.scrollHeight))}px`;}},[message]);
+ function draft(value:string,operation:TypingOperation='reply'){draftOperation.current={message:value.trim(),operation};setMessage(value);inputRef.current?.focus();}
+ function reset(){scrolling.resetFollow();draftOperation.current=null;version.current++;active.current?.abort();active.current=null;lock.current=false;setBusy(false);setGenerating(false);setRestoring(false);setEntries([]);setProfile(initialProfile);setConversationId(null);setSelectedProposalId(null);setTitle('');setError('');setNotice('');setMessage('');setHistoryOpen(false);remember(null);inputRef.current?.focus();}
+ async function send(event:FormEvent){
+  event.preventDefault();if(!message.trim()||lock.current||restoring||!availability?.available)return;
+  const operationHint=draftOperation.current?.message===message.trim()?draftOperation.current.operation:'reply';setTypingOperation(operationHint);draftOperation.current=null;
+  lock.current=true;setBusy(true);setGenerating(true);setError('');setNotice('');const sent=message.trim(),pendingId=crypto.randomUUID();setMessage('');setEntries(current=>[...current,{id:pendingId,role:'user',text:sent}]);
+  const controller=new AbortController();active.current=controller;const operation=++version.current;
+  try{
+   let id=conversationId;
+   if(!id){const response=await fetch('/api/v1/coach/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'New conversation'}),signal:controller.signal});const body=await response.json();if(!response.ok)throw new Error('Could not start a saved conversation.');if(operation!==version.current)return;id=body.data.id;setConversationId(id);setTitle(body.data.title);remember(id);setConversations(current=>[body.data,...current]);}
+   const response=await fetch('/api/v1/coach/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:sent,conversationId:id,profile,conversationFirst:true,...(selectedProposalId?{proposalId:selectedProposalId}:{})}),signal:AbortSignal.any([controller.signal,AbortSignal.timeout(95000)])});
+   const body=await response.json();if(operation!==version.current)return;
+   if(!response.ok)throw new Error(body.error?.message||body.message||'Kivo could not respond. Please try again.');
+   if(!replyMatchesConversation(id!,body))throw new Error('The response did not match this conversation. Reload before retrying.');
+   if(body.kind==='proposal'){
+    const result=proposalResponseSchema.parse(body);if(result.proposal.status!=='pending')throw new Error('The server did not return an unconfirmed preview. Reload before retrying.');setSelectedProposalId(result.proposal.id);setEntries(current=>[...current,{role:'coach',text:'Your proposal is ready to review. It becomes active only after confirmation.',proposal:result.proposal,proposalId:result.proposal.id}]);
+    if(result.historySaved===false)setNotice('The preview is ready, but its conversation entry could not be saved. Review it now; it may not reappear in this chat after reloading.');
+   }else{const reply=body as CoachPayload;if(typeof reply.message!=='string'||!Array.isArray(reply.exerciseIds))throw new Error('The server did not confirm a valid reply. Reload before retrying.');setEntries(current=>[...current,{role:'coach',text:reply.message,response:reply}]);}
+  }catch(cause){if(operation===version.current&&!controller.signal.aborted){setEntries(current=>current.filter(row=>row.id!==pendingId));setMessage(sent);draftOperation.current={message:sent,operation:operationHint};setError(cause instanceof Error&&cause.name!=='TimeoutError'?cause.message:'Could not confirm the saved reply. Reload the conversation before retrying; a reply may already have been saved.');}}
+  finally{if(operation===version.current){lock.current=false;setBusy(false);setGenerating(false);active.current=null;inputRef.current?.focus();}}
+ }
+ async function openConversation(id:string){
+  scrolling.resetFollow();draftOperation.current=null;const operation=++version.current;active.current?.abort();const controller=new AbortController();active.current=controller;lock.current=true;setBusy(true);setGenerating(false);setError('');setNotice('');
+  try{const response=await fetch(`/api/v1/coach/conversations/${id}`,{cache:'no-store',signal:controller.signal});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||'Conversation could not load.');const rows=await restoreEntries(body.data,controller.signal);if(operation!==version.current)return;setConversationId(id);setSelectedProposalId(null);setTitle(body.data.title);setEntries(rows);remember(id);setHistoryOpen(false);}
+  catch(cause){if(operation===version.current&&!controller.signal.aborted)setError(cause instanceof Error?cause.message:'Conversation could not load.');}
+  finally{if(operation===version.current){lock.current=false;setBusy(false);setRestoring(false);active.current=null;}}
+ }
+ async function manageConversation(remove=false){
+  if(!conversationId||lock.current)return;lock.current=true;setBusy(true);setError('');const operation=version.current;
+  try{const response=await fetch(`/api/v1/coach/conversations/${conversationId}`,{method:remove?'DELETE':'PATCH',headers:remove?undefined:{'Content-Type':'application/json'},body:remove?undefined:JSON.stringify({title})});const body=await response.json();if(operation!==version.current)return;if(!response.ok)throw new Error(body.error?.message||'Conversation update failed.');if(remove){setConversations(current=>current.filter(c=>c.id!==conversationId));reset();}else setConversations(current=>current.map(c=>c.id===conversationId?{...c,title}:c));}
+  catch(cause){if(operation===version.current)setError(cause instanceof Error?cause.message:'Could not update.');}finally{if(operation===version.current){lock.current=false;setBusy(false);}}
+ }
+ async function proposalAction(proposal:PlanProposal,action:'confirm'|'cancel'){
+  if(lock.current)return;lock.current=true;setBusy(true);setError('');const operation=version.current;
+  try{const response=await fetch(`/api/v1/coaching/plan/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proposalId:proposal.id,...(action==='confirm'?{confirm:true}:{})}),signal:AbortSignal.timeout(20000)});const body=await response.json();if(operation!==version.current)return;if(!response.ok)throw new Error(body.error?.message||'Could not confirm this action. Reload before retrying.');if(action==='confirm'&&(!body.data?.id||!body.data?.payload))throw new Error('The saved plan was not confirmed. Reload before retrying.');if(action==='cancel'&&body.data?.cancelled!==true)throw new Error('Rejection was not confirmed.');setEntries(current=>current.map(row=>row.proposal?.id===proposal.id?{...row,proposal:{...row.proposal,status:action==='confirm'?'confirmed':'cancelled'}}:row));setSelectedProposalId(null);setNotice(action==='confirm'?'Your confirmed plan is saved across Home, Training and Nutrition.':'Proposal rejected. Your saved plan was kept.');router.refresh();}
+  catch(cause){if(operation===version.current)setError(cause instanceof Error?cause.message:'Could not confirm the action. Reload before retrying.');}finally{if(operation===version.current){lock.current=false;setBusy(false);}}
+ }
+ async function revealProposal(id:string){try{const proposal=await loadProposal(id);setEntries(current=>current.map(row=>row.proposalId===id?{...row,proposal}:row));}catch{setError('This earlier proposal is unavailable. See your saved plan in Training or request a fresh preview.');}}
+ return <div className="coachConversation" ref={frameRef}>
+  <header className="conversationHeader"><div className="conversationIdentity"><KivoAvatar decorative/><div><h1>Kivo</h1><p>Your personal coach <span className="muted">· AI</span></p></div></div><div className="conversationTools"><button type="button" className="chip" aria-label="Open conversation history" onClick={()=>setHistoryOpen(true)}>History</button><button type="button" className="chip" aria-label="Open conversation settings and privacy" onClick={()=>setSettingsOpen(true)}>Settings</button></div></header>
+  <div className="conversationMessages" role="log" aria-label="Conversation with Kivo, your AI personal coach" aria-live="polite" aria-relevant="additions" ref={logRef} onScroll={scrolling.onScroll} onWheel={scrolling.onWheel} onTouchMove={scrolling.onTouchMove} onKeyDown={scrolling.onKeyDown} tabIndex={0}>
+   {!entries.length&&!restoring&&<div className="conversationWelcome"><h2>What would you like to work on?</h2><p>Ask a question, build a training plan or adjust your current workout.</p><div className="conversationSuggestions" aria-label="Suggested prompts">{suggestions.map(({prompt,operation})=><button type="button" className="chip promptChip" key={prompt} onClick={()=>draft(prompt,operation)}>{prompt}</button>)}</div></div>}
+   {entries.map((entry,index)=><article key={entry.id??index} className={`chatEntry ${entry.role}`}><CoachMessage entry={entry.proposalId?{...entry,text:'Your proposal is ready to review. It becomes active only after confirmation.'}:entry}/>{entry.proposal?<InlineProposal proposal={entry.proposal} busy={busy} onConfirm={()=>void proposalAction(entry.proposal!,'confirm')} onReject={()=>void proposalAction(entry.proposal!,'cancel')} onChange={value=>{setSelectedProposalId(entry.proposal!.id);draft(value,entry.proposal!.payload.scope==='nutrition_only'?'meals':entry.proposal!.payload.scope==='training_and_nutrition'?'combined':'workout');}}/>:entry.proposalId?<button type="button" className="textbutton" disabled={busy} onClick={()=>void revealProposal(entry.proposalId!)}>Load plan preview</button>:null}{entry.response?.exercises?.length?<div className="cards chatExercises">{entry.response.exercises.map(exercise=><ExerciseCard key={exercise.id} exercise={exercise}/>)}</div>:null}</article>)}
+   {generating&&busy&&!restoring&&entries[entries.length-1]?.role==='user'&&<KivoTypingIndicator operation={typingOperation}/>}
+  </div>
+  <footer className="conversationComposer" id="plan-workspace"><CoachLoadingStatus restoring={restoring} busy={busy} generating={generating} typingLabel={typingLabel(typingOperation)}/>{notice&&<p role="status" className="composerNotice">{notice}</p>}{error&&<div className="composerError" role="alert"><p>{error}</p>{conversationId&&<button type="button" className="textbutton" disabled={busy} onClick={()=>void openConversation(conversationId)}>Reload saved conversation</button>}</div>}{availability?.available===false&&<p role="status" className="composerNotice">Kivo is unavailable right now. Check connection details in Settings, or reload to try again.</p>}<form onSubmit={send} className="conversationForm"><label className="visuallyHidden" htmlFor="kivo-message">Message Kivo</label><textarea id="kivo-message" ref={inputRef} rows={2} maxLength={2000} value={message} onChange={event=>{draftOperation.current=null;setMessage(event.target.value);}} placeholder="Ask Kivo about your training…" aria-describedby="coach-message-limit" onKeyDown={event=>{if(!event.nativeEvent.isComposing&&(event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();void send(event);}}}/><button className="button" type="submit" disabled={busy||restoring||!message.trim()||!availability?.available}>Send</button></form><small id="coach-message-limit" className="composerHelp">{message.length}/2000 · Enter adds a line. Ctrl/⌘ + Enter sends.</small></footer>
+  <CoachDialog title="Conversation history" open={historyOpen} onClose={()=>setHistoryOpen(false)}><button className="button" type="button" onClick={reset}>Start new conversation</button><div className="conversationHistory">{!conversations.length?<p>No saved conversations yet.</p>:conversations.map(row=><button type="button" className="historyRow" disabled={busy} key={row.id} onClick={()=>void openConversation(row.id)}><strong>{row.title}</strong>{row.updated_at&&<small>{new Date(row.updated_at).toLocaleDateString('en-GB')}</small>}</button>)}</div>{conversationId&&<div className="stack"><label className="field">Conversation title<input value={title} maxLength={100} onChange={event=>setTitle(event.target.value)}/></label><div className="chips"><button className="chip" disabled={busy||!title.trim()} onClick={()=>void manageConversation()}>Rename</button><button className="chip" disabled={busy} onClick={()=>void manageConversation(true)}>Delete saved conversation</button></div></div>}</CoachDialog>
+  <CoachDialog title="Conversation settings and privacy" open={settingsOpen} onClose={()=>setSettingsOpen(false)}><CoachPreferences profile={profile} onChange={setProfile} saved/><p className="muted">These temporary settings guide chat only. Plan previews use your saved restrictions and explicit change request. <Link className="textbutton" href="/profile">Edit saved preferences →</Link></p><details><summary>Privacy &amp; safety</summary><p>Conversations are saved to your account after successful responses. A bounded recent history and relevant preferences are sent to OpenAI. General fitness and nutrition education, not medical diagnosis or treatment. Nutrition calculations use source-backed data where available; Kivo does not invent precise food values. Exercise images remain labelled placeholders. Scope and safety checks can make mistakes.</p><p>Messages never silently update your saved preferences or active plan. Plans require a validated preview and explicit confirmation.</p></details><details><summary>Connection details</summary><p>{availability?.message??'Checking availability…'}</p><button type="button" className="chip" onClick={()=>window.location.reload()}>Reload connection</button></details></CoachDialog>
+ </div>;
 }

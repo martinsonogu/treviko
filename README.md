@@ -1,37 +1,86 @@
 # Treviko
 
-Mobile-first fitness and nutrition companion built in the existing Next.js App Router repository. Milestones 1–3 remain available: 48 typed exercises, 12 muscle groups, deterministic targeting, compatible equipment filtering, accessible exercise-detail tabs, and server-side OpenAI coaching with scope/safety checks.
+Mobile-first AI personal trainer with integrated, optional nutrition coaching, built in the existing Next.js App Router repository. Milestones 1–3 remain available: 48 typed exercises, 12 muscle groups, deterministic targeting, compatible equipment filtering, accessible exercise-detail tabs, and server-side OpenAI coaching with scope/safety checks.
 
-Milestone 4 adds Supabase-backed accounts, onboarding, private preferences, saved conversations, source-backed nutrition utilities, meal plans, account deletion and database-shared AI controls. **Supabase must be configured and the migrations applied before account features work.** Missing configuration produces a setup message or protected-route redirect; it never simulates a successful login or database save. Public Training and Progress still work without Supabase.
+Milestone 4 adds Supabase-backed accounts, onboarding, private preferences, saved conversations, source-backed nutrition utilities, meal plans, account deletion and database-shared AI controls. **Supabase must be configured and the migrations applied before account features work.** Missing configuration produces a setup message or protected-route redirect; it never simulates a successful login or database save. Public Home and the exercise library work without Supabase; Progress requires sign-in.
 
 
-## AI-first coaching experience
+## Kivo, your AI personal coach
 
-Home, Training, Nutrition and Coach now share one confirmed coaching plan. Home shows the workout scheduled in your saved timezone, a daily meal template and honest progress/empty states. Training keeps all 48 exercises and Target a Muscle beneath your saved workout week. Nutrition prioritises meal planning, substitutions, source-linked recipes and a one-day ingredient shopping list; the existing source explorer and saved meal plans remain available.
+Treviko is the application; Kivo is its AI personal coach. The navigation label stays **Coach**, at `/coach`, using the existing coaching APIs and shared plan system. Home, chat, training adjustments and optional nutrition guidance use this same assistant identity. A reusable forest-green/mint SVG avatar represents Kivo separately from the supplied Treviko logo.
 
-**Required setup:** apply only the new additive migration `supabase/migrations/202611050001_coaching_plans.sql` once, after the two existing migrations. If you applied those manually in SQL Editor, run only this new file there; do not re-run the first two. If CLI migration history already tracks them, use `supabase db push`. No new environment variables or credentials are required. Existing OpenAI, Supabase and nutrition settings are preserved. Do not reset a hosted database.
+Chat and plan generation share server-side personality instructions: practical, supportive, honest about uncertainty, clearly AI, without repetitive introductions or invented personal experience. The existing profile, context, exercise/nutrition validation, safety, usage limits and explicit confirmation rules remain in place. Historical conversations are displayed unchanged. Workout logging and progress insights are not implemented.
 
-On Home choose **Create my plan**, then describe your needs in Coach's **Create or adjust my shared plan** workspace. You can use saved preferences, request adjustments, review a complete training-and-meals preview, reject it or explicitly **Confirm & save this plan**. In ordinary chat, **Use this message to propose a plan change** passes your message and owned conversation into the same workflow. General chat receives the active plan as context but cannot save changes. Free-text “yes” is not a database confirmation: use the confirmation button attached to the exact preview.
+Manual check: sign in, open Coach and confirm the Kivo heading, labelled input and avatar. Reopen an existing chat and verify its text is unchanged. Ask a training question, preview a training-only plan and confirm no meals are added. Review and explicitly confirm a test plan, then verify Home and Training show the same saved record. Nutrition remains opt-in. Run `NAV_FIXTURE=coach npm run test:navigation` for the real Coach component and avatar in an isolated browser fixture. Automated provider tests are mocked; they do not establish live-model tone or quality.
 
-Proposals are structured and independently reviewed through the existing OpenAI provider, with shared admission, token/cost budgets and bounded requests. The server checks exact library IDs, equipment, experience, library set/rep prescriptions, recipes, dietary/allergen restrictions, ownership and version. Preferences changing during generation/review invalidate confirmation. A newer confirmed revision prevents stale-tab overwrites. Reads never generate AI. General chat does not silently change saved profiles or plans. Existing identical owned daily meal plans are reused.
+Kivo implementation files:
 
-Source coverage is limited. The coach can propose qualitative meals when no suitable source recipe exists; **their numerical nutrition is unavailable**, not estimated by the model. Daily totals are unknown when any meal lacks a component nutrient. The shopping list covers only linked recipe ingredients, not every qualitative idea. Development snapshots and authored recipe examples remain labelled. Prices, budget fit, certified allergen safety and complete nutritional adequacy are not verified. Meals form a repeated daily template; varied weekly meal generation is not implemented. Workout logging and analytics remain out of scope.
+- Identity and UI: `src/lib/kivo.ts`, `src/components/coach/{KivoAvatar,CoachMessage,CoachChat,CoachLoadingStatus}.tsx`, `src/app/(experience)/coach/page.tsx`, `src/app/globals.css`.
+- App copy and previews: `src/components/coaching/{HomeContent,DailyDashboard,PlanPreview,PlanWorkspace}.tsx`, `src/app/(experience)/nutrition/page.tsx`.
+- Shared AI personality and identity-aware instructions: `src/lib/coach/{personality,provider,scope}.ts`, `src/lib/coaching/generation.ts`. Error and guidance copy: `src/lib/coach/{http,service}.ts`, `src/lib/coaching/programme.ts`.
+- Regression checks: `tests/{kivo,coach-conversation,coaching-plan,profile-save}.test.mjs`, `scripts/check-navigation-browser.mjs`. Documentation stays in this README.
 
-New private endpoints:
+## Training-first coaching experience
 
-| Endpoint | Behaviour |
+Home, Training, Nutrition and Coach read the same confirmed coaching record, with independently editable training and nutrition components. Workout and vague personal-plan requests default to **training only**. Meals are generated only for an explicit nutrition request or a combined selection. The Coach conversation recognises explicit requests for training, nutrition or both; no workflow selector is required. Saved dietary preferences alone never opt users into meal planning.
+
+**Required setup:** apply the additive migration `supabase/migrations/202611050002_training_first.sql` once after the three existing migrations. With the existing migrations correctly tracked, run `supabase db push --dry-run`, check that only this file is pending, then `supabase db push`. For SQL Editor installations run only the new file as a transaction. No data reset or new credentials are needed. It adds prescription/timing columns, permits a nutrition-first record without workouts, and replaces the service-only confirmation transaction to preserve untouched components. Existing snapshots remain readable. A generic cable machine no longer implies a dedicated lat-pulldown station; confirm the new equipment option in Profile only if actually available.
+
+On Home choose **Create my training plan**. Describe your needs in Coach, review the schedule, complete prescriptions, computed duration estimates, warm-up, effort guidance, progression and compatible alternatives, then explicitly **Confirm & save**. Nutrition can be added later, without replacing workouts. A training-only confirmation preserves existing meal references; a nutrition-only confirmation preserves existing workout rows. Global version checks still reject stale tabs, and preference changes invalidate a preview. Model text never writes to the database directly. Explicit plan requests in ordinary chat use this same preview workflow and owned history.
+
+Session availability is a ceiling, not an invented workout duration. The server estimates time from warm-up, working sets, conservative repetition/hold duration, rest and transitions, rounding up to five-minute bands. Confirmed exercise IDs/equipment, complete prescriptions, useful volume, movement coverage, recovery and progression are checked deterministically. At most one metered repair is allowed; failed validation/review leaves the saved plan intact. Saved-profile and requested goals are displayed separately; editing the profile goal is a separate explicit action. Technical version IDs remain internal.
+
+Source coverage is limited. When nutrition is requested, matching recipes retain deterministic nutrient calculations and provenance; otherwise meals are qualitative with numerical nutrition unavailable. The daily template can include varied meal slots but repeats across days. Shopping quantities cover known recipe ingredients only. There is no fabricated calorie target, complete nutrition-adequacy guarantee, live pricing or guaranteed allergy safety. Training-only proposals show no meal or shopping section. Existing food tools and saved meal plans remain available.
+
+| Private endpoint | Behaviour |
 | --- | --- |
-| `GET /api/v1/coaching/plan` | Current confirmed plan and latest applicable pending preview. |
-| `POST /api/v1/coaching/plan/proposals` | Generate a preview from `{message, conversationId?}`; also handles revisions. |
-| `POST /api/v1/coaching/plan/confirm` | Publish exactly `{proposalId, confirm:true}` after revalidation. |
-| `POST /api/v1/coaching/plan/cancel` | Reject an owned pending proposal. |
-| `GET /api/v1/coaching/today` | Shared daily workout, meal calculations, source information and shopping projection. |
+| `GET /api/v1/coaching/plan` | Confirmed components and the applicable pending preview. |
+| `POST /api/v1/coaching/plan/proposals` | `{message, conversationId?, scope?, goal?}`. Scope is `training_only`, `nutrition_only` or `training_and_nutrition`; omitted scope uses semantic request intent with training as the conservative default. |
+| `POST /api/v1/coaching/plan/confirm` | `{proposalId, confirm:true}`; atomically replaces only the requested component(s). |
+| `POST /api/v1/coaching/plan/cancel` | Reject an owned pending preview. |
+| `GET /api/v1/coaching/today` | Server-authoritative daily training and optional nutrition projection. |
 
-All endpoints require verified authentication, owner-scoped database access and private/no-store responses. Browser mutations retain origin checks. Only server-privileged code writes proposals/plans. Plan publication is transactional; relational workouts and meal references plus immutable revision history cascade on account deletion.
+Verified authentication, RLS, server validation, origin checks, private/no-store responses, expiration, usage budgets, safety checks, confirmation and account-deletion cascades remain. Optional `PLAN_MIN_SESSION_SETS`, `PLAN_MAX_SESSION_SETS`, `PLAN_MAX_WEEKLY_MUSCLE_SETS` and `PLAN_PATTERN_EXPOSURES` configure conservative programming guards; defaults are documented in `.env.example`. They are quality guardrails, not universal physiological requirements. Existing `.env.local` values are preserved.
 
-See [implementation, changed files and manual acceptance steps](docs/ai-first-plan.md). Automated SQL/API tests use actual migrations and mocked AI/Auth boundaries. They verify local proposal/confirmation/revision, linked nutrition, shared views and restored reads, **not hosted Supabase Auth, live model quality or a full browser end-to-end journey**. No paid AI request or hosted migration is run by the test suite.
+Automated tests mock paid AI and execute real SQL locally; hosted migration application, actual model quality for the new scope contract and the complete authenticated browser journey require manual verification. No workout logging or analytics were added.
 
-Plan generation now constrains model output to exact allowed IDs/options, performs at most one metered repair for an invalid or truncated draft, and returns stage-specific safe errors. Authentication, safety review, nutrition calculations and explicit confirmation remain required. See [the failure investigation and manual verification steps](docs/plan-generation-fix.md) for confirmed findings, diagnostic categories and live-test limits.
+## Public and account experience
+
+Public Home and the exercise library remain available without an account. Authentication uses a compact dedicated layout; app navigation is shown only after server-verified sign-in. Signed-in members get desktop top navigation/mobile bottom navigation and a circular profile avatar linking to `/settings`. Progress requires sign-in and shows a no-history state without internal milestone labels. Public/auth/private URLs are unchanged; App Router route groups separate their layouts.
+
+Deletion completion uses a short-lived signed HttpOnly cookie issued only after successful account removal; `deleted=true` alone never proves deletion. Browser auth cookies and in-memory credentials are cleared on the completed flow. Login preserves safe return destinations, forms have accessible show/hide controls, and signup/recovery messages remain non-enumerating. No new migration, key or Supabase setting is required for this UI work.
+
+## Profile and settings
+
+The authenticated header links to `/settings` through a circular, 44px avatar. Initials come only from the saved display name; missing names use a neutral person icon, distinct from Kivo's avatar. The header reads only `profiles.display_name` for the verified user and never shows their email.
+
+Settings displays the existing saved profile and account email, grouped into personal details, training, nutrition, security, privacy/account and sign-out. All preference links reuse `/profile`. Missing values remain explicit; a profile-load failure leaves security and sign-out available. Deletion is a native keyboard-operable disclosure directly under Privacy & account and retains password reauthentication, exact confirmation and existing server-side deletion protections. Sign-out uses the existing endpoint and navigates only on confirmed success. No new account route, database, photo upload or migration is introduced.
+
+Settings changes are in `src/components/account/{ProfileAvatar,SettingsOverview,SettingsPanel}.tsx`, `src/components/account/sign-out.ts`, `src/components/layout/ExperienceFrame.tsx`, `src/lib/profile/service.ts`, `src/app/(experience)/settings/page.tsx` and `src/app/globals.css`. Checks are in `tests/settings.test.mjs`, the existing auth regressions, and the `NAV_FIXTURE=settings npm run test:navigation` browser fixture.
+
+Manual verification:
+
+1. Sign in with a test account. Save a display name in `/profile`, navigate away, and verify its initials in the header. Clear the name and confirm the neutral icon appears. Check that the header contains no email and the avatar opens `/settings`.
+2. At 375px and 390px, inspect the saved name, email, training and nutrition summaries. Follow each edit link, save a change, return to Settings and confirm the actual saved value appears. Existing completed onboarding must remain complete.
+3. Open Privacy & account → Delete account using Enter or Space. Check the warning, labels and disabled destructive button. On a disposable test account only, verify an incorrect password fails, then use the correct password plus `DELETE MY ACCOUNT` to complete deletion and clear the session. Do not use an account with data you need.
+4. Request a password reset through Security and complete it using the configured email flow. Sign out through the bottom secondary button and confirm protected pages require sign-in again. A failed sign-out must stay on Settings with an error.
+5. On an installed PWA, open the keyboard in the deletion form and check input/button clearance above the bottom tabs, in portrait and landscape. Check keyboard focus for the avatar, edit links, disclosure and sign-out. Browser fixtures simulate insets; physical iPhone behaviour still needs manual verification.
+
+## PWA navigation and branding
+
+Authenticated navigation uses Home, Coach, Training, Nutrition and Progress in that order. Below 850px it is a persistent bottom bar; wider screens use horizontal header navigation. Nested routes select the parent destination. Public and authentication screens never show private app navigation. Safe-area insets and matching content clearance keep the bottom bar away from the home indicator and final scrolling actions.
+
+The standalone manifest, Apple touch icon and favicon use the supplied Green Flow logo. The original artwork is preserved in `public/branding/treviko-source.png`; derived header and installation assets live in `public/branding/` and `public/icons/`. Installation requires a supported browser and HTTPS on deployed devices. No service worker or offline support is implemented.
+
+Run `npm run test:navigation` for isolated Chrome checks at 375px, 390px, 768px, 850px and 1280px, including a simulated 34px bottom inset, keyboard focus, touch targets, active routes and content clearance. Set `CHROME_BIN` if Chrome is outside the default macOS location. These fixture-shell checks do not replace a signed-in physical-device test.
+
+Manual verification:
+
+1. Sign in and check each tab at 375 × 812 and 390 × 844. Open an exercise detail, use “Exercise library” to return, and verify Training stays selected. Check Coach plan review and explicit confirmation.
+2. Scroll to the final controls on Training, Profile, Coach and Nutrition. Open the software keyboard on the last input, type and dismiss it. Repeat in landscape and with larger system text; check for overlap and horizontal overflow.
+3. On an HTTPS deployment, use Safari → Share → Add to Home Screen on iPhone. Launch it and check the logo, session destination, notch and home-indicator spacing. Repeat on Android Chrome where available. Remove and re-add an older shortcut if its icon is cached. Connectivity is required.
+4. At 850px and 1280px, confirm only desktop navigation appears. Use Tab and Enter to check focus and activation; keep browser zoom available.
+5. Sign out and visit `/`, `/training`, an exercise detail and each authentication screen. Confirm private tabs are absent and exercises remain public. Verify `/coach`, `/nutrition` and `/progress` require sign-in and preserve the return destination.
 
 ## Current verification status
 
@@ -67,7 +116,7 @@ Set `APP_ORIGIN` to the application's exact origin, `http://localhost:3000` loca
 ## Hosted Supabase setup
 
 1. Create a dedicated Supabase project. Copy its URL, publishable key and server secret into the **existing** `.env.local`. Keep the OpenAI variables intact.
-2. Install/authenticate the Supabase CLI locally. Link this repository to your project and apply the two additive migrations:
+2. Install/authenticate the Supabase CLI locally. Link this repository to your project and apply the migrations:
 
    ```sh
    supabase login
@@ -75,7 +124,7 @@ Set `APP_ORIGIN` to the application's exact origin, `http://localhost:3000` loca
    supabase db push
    ```
 
-   Migration files are `supabase/migrations/202611040001_milestone4.sql` and `202611040002_shared_ai_controls.sql`. Review them before applying to any project with existing similarly named tables. They do not drop existing data. They create a profile-initialization trigger, backfill existing Auth users, establish RLS and explicitly restrict privileged RPC execution. The CLI tracks applied migrations; do not repeatedly paste them into SQL Editor. Never run a destructive database reset against a hosted project.
+   The original account migrations are `supabase/migrations/202611040001_milestone4.sql` and `202611040002_shared_ai_controls.sql`; coaching adds `202611050001_coaching_plans.sql` and `202611050002_training_first.sql`. A fresh project applies all four in order; an existing project applies only pending migrations. Review them before applying to any project with existing similarly named tables. They do not drop existing data. They create a profile-initialization trigger, backfill existing Auth users, establish RLS and explicitly restrict privileged RPC execution. The CLI tracks applied migrations; do not repeatedly paste them into SQL Editor. Never run a destructive database reset against a hosted project.
 3. Enable email/password signups, **Confirm Email**, refresh-token rotation and appropriate password policy (the app requires at least 12 characters for new passwords). Disable anonymous Auth signups. Configure your Site URL and allow the exact `/auth/confirm`, `/auth/confirm?next=/reset-password`, and `/reset-password` URLs under your app origin. Do not use a broad wildcard for production redirects.
 4. Configure confirmation and recovery email templates using the supplied HTML in `supabase/templates/`. Confirmation uses `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup`; recovery uses the same path with `type=recovery`. The route verifies the token server-side and permits only safe internal redirects. PKCE code callbacks are also supported.
 5. Configure production SMTP and review Supabase's Auth rate limits and bot protection. Default hosted mail delivery is limited and must not be assumed to be production-ready.
@@ -147,13 +196,71 @@ The deterministic recommendation API uses saved dietary patterns, cuisines, disl
 
 Cuisines are explicitly selected by the user, never inferred from identity. Current budget information is stored and can inform qualitative chat, but **no live pricing database exists**, no exact grocery price is fabricated, and deterministic meal selection does not claim budget fit. Inspect all labels and cross-contact risks; no absolute allergen-safety guarantee is made.
 
+## Conversation-first Coach
+
+The previous screen put a separate plan generator, preferences and saved-history controls ahead of chat. `/coach` now opens a compact Kivo header, one message scroller and a persistent composer above the mobile tabs. History and temporary settings/privacy use labelled native dialogs with keyboard dismissal and focus management. Technical connection details live in the settings dialog. When the software keyboard reduces the visual viewport, the mobile tabs and compact conversation header temporarily hide so the composer has room; they return when the keyboard closes. Existing deep links prefill the same composer; they do not make a paid request until Send is pressed.
+
+The existing `POST /api/v1/coach/messages` accepts optional `conversationFirst: true` and an owned `proposalId` for a selected preview. It uses metered structured intent classification within the existing shared request lease. Advice (including bulking, recovery and workout explanations) remains a normal response. Explicit creation, active-plan changes and substitutions reuse `proposePlan`; requesting meals is required for nutrition proposals. A revision can target an unconfirmed preview. A bare “yes” or “save it” never publishes anything. Chat classification receives only goals/experience and minimal plan/preview metadata; detailed restrictions and validated data stay in the existing topic-specific generation pipeline.
+
+Proposals appear inline, with goal/experience/timing/equipment summaries, collapsed workout days, rest and substitution options, and confirmation actions before detailed instructions. “Request changes” focuses the composer with the preview selected; it does not send automatically. `Confirm & save` and rejection still use the existing APIs, ownership checks, preference fingerprints, version checks and expiry rules. Saved preferences are never overwritten by chat. One lease covers routing and generation; model output cannot authorise publication. A plan request adds one metered routing classification before the existing plan generation/review stages, within the same token and cost controls.
+
+The additive read-only `GET /api/v1/coaching/plan/proposals/:id` restores owned proposal cards alongside unchanged saved messages, including confirmed, rejected or expired snapshots. The last five references hydrate automatically; older references load on demand. A missing old proposal leaves the original conversation data intact and offers a useful error. Existing clients that omit `conversationFirst` retain the original message response contract. No database migration or parallel generator is introduced.
+
+Changed implementation files: `src/components/coach/{CoachChat,CoachDialog,InlineProposal}.tsx`, `src/components/coach/{conversation-state,viewport}.ts`, `src/lib/coach/{action-intent,provider}.ts`, `src/lib/persistence/coach-http.ts`, `src/lib/coaching/{workflow,schema,generation,proposal-reference}.ts`, the proposal retrieval route and `src/app/globals.css`. Regression and browser support live in `tests/conversation-first.test.mjs`, `tests/coaching-plan.test.mjs`, `tests/conversation-fixture.mjs`, `tests/app-router-fixture.mjs`, `tests/kivo.test.mjs` and `scripts/check-navigation-browser.mjs`.
+
+Manual verification:
+
+1. Sign in on `/coach` at 375px, 390px and 430px. Confirm the composer is available immediately, history/settings are secondary and messages scroll independently without horizontal overflow. Type several lines, open/dismiss the software keyboard and check the composer stays visible. Repeat in an installed iPhone PWA, landscape and desktop. Enter adds lines; Ctrl/⌘ + Enter sends.
+2. Ask “How best can I bulk given my weight and height?” and a recovery or workout-explanation question. Expect conversational guidance, without a plan being generated or saved. Then send “Create a two-day muscle-building programme.” Review the inline preview, expand workout details and verify no meals appear.
+3. Request a substitution in a saved plan or choose “Request changes” on an unconfirmed preview. Send the revision through the same composer. Verify the existing active plan stays unchanged until `Confirm & save` succeeds; then check Home and Training. Check that a different requested goal leaves the saved Profile goal intact.
+4. Explicitly request a meal plan. Check dietary restrictions and existing training context. Numerical nutrition remains source-backed; absent data is unavailable, not estimated. Reject a proposal and verify the saved plan stays intact. Check expired/stale previews are rejected by the server.
+5. Open History using the keyboard, start a new chat, resume an old one, rename it and reload. Confirm text and proposal statuses survive reopening. Check another test account cannot retrieve the conversation or proposal ID. Ask an out-of-scope or safety-sensitive question and verify policy handling.
+6. In Settings, check temporary preference labels, saved Profile link, privacy/safety information and connection diagnostics. Run `NAV_FIXTURE=coach npm run test:navigation` for isolated responsive/keyboard checks; browser fixtures simulate viewport and keyboard sizing without live accounts or paid AI.
+
+Remaining verification: live-model intent/tone quality, hosted email/auth configuration and physical-device iOS keyboard/pan behaviour need manual testing. Automated tests mock paid calls. No workout logging, progress analytics or native app is included.
+
+## Kivo typing status
+
+Pending chat requests use the existing generating/busy state to render one transient assistant bubble below the latest user message, with Kivo's avatar and three gently staggered dots. The bubble is not appended to saved entries or sent in API payloads. Completion, error, timeout and cancellation remove it. The separate accessible status announces the label once; decorative dots do not produce repeated screen-reader announcements, and reduced-motion preferences disable the animation.
+
+Known UI actions (such as the training/meal-plan suggestion chips or a proposal change action) can show a preparation label. Edited/free-text requests use “Kivo is typing” because the client cannot know server-side intent before the response; no progress stages are invented. Scrolling follows new content only while the user is following the conversation, including viewport/composer resizes. Reading older messages does not force a jump to the bottom.
+
+Changes are limited to `src/components/coach/{KivoTypingIndicator,CoachChat,CoachLoadingStatus}.tsx`, `src/components/coach/conversation-scroll.ts`, styles and test/documentation support. AI routing, budgets, plan generation, confirmation and Supabase writes are unchanged.
+
+Run `npm run test:typing` for the actual Coach client in isolated Chrome with all API calls replaced by an in-memory test transport. It covers 375px/390px/430px/desktop placement, reduced motion, normal replies, workout/meal labels, failure, timeout, retry, cancellation, history switching, unchanged payloads and intentional scroll-up. The script uses the installed Next.js compiler dependencies, creates only temporary fixture files, and makes no real API or AI requests. Set `CHROME_BIN` if Chrome is outside its default macOS path.
+
+Manual check on an authenticated device: send a normal question and verify the bubble appears immediately below your message and becomes the reply. Repeat using training/meal suggestions, then a failed request and retry. Open History and start a new conversation while waiting; confirm no old indicator survives. Scroll up while awaiting a reply and verify your reading position remains. Check with reduced motion enabled and an on-screen keyboard in an installed PWA; actual iOS keyboard and screen-reader behaviour still need physical-device verification.
+
+## Contextual plan follow-through
+
+Confirmed cause of repeated plan offers: the old action contract required an explicit request in the current message and explicitly classified bare acceptance as conversation. It tracked no outstanding offer/clarification, and the plan pipeline resolved availability primarily from the current turn and saved profile. Thus “go on” after an offer could repeatedly reach chat instead of executing the proposal workflow; conversation-only availability never became validated plan context.
+
+The server now reconstructs bounded task context from the current account's owned recent history (up to 10 messages/12000 characters). Semantic structured routing identifies a relevant continuation source; narrow clear-request/acceptance guards and conservatively sourced USER facts ensure the reported weekly-workout request advances even when the action classifier otherwise returns conversation. Normal explanations, recovery questions, unsafe/unrelated requests and continuation without an outstanding task do not trigger a new plan. An existing preview is re-shown for review, not implicitly confirmed or repeatedly regenerated. Rejected/expired previews never become active from chat acceptance.
+
+When essential equipment or training availability is absent, Kivo asks one focused question, persists that conversational turn and resumes when the user answers. Explicit “twice a week”, equipment answers and other confirmed user details guide the same generator. Beginner targets and a thirty-minute ceiling remain labelled conservative starting options if experience/time are unspecified. Current explicit goals take precedence over older conversation goals, which stay separate from saved Profile goals.
+
+Server-attached `conversationPreferences` in the existing proposal/revision JSON snapshot records plan-specific confirmed equipment, days, time or experience. The AI draft schema cannot write this metadata. Saved Profile rows and their confirmation fingerprints remain unchanged. Generation, confirmation and daily-plan compatibility checks apply the same validated context. Existing saved equipment restrictions, maximum availability, experience limits, dietary constraints, expiry and version checks remain enforced. No database migration is required; the real-SQL journey verifies that snapshot context survives explicit confirmation and partial meal revisions.
+
+Changed files: `src/lib/coach/{task-context,context,action-intent,provider}.ts`, `src/lib/persistence/coach-http.ts`, `src/lib/coaching/{conversation-preferences,schema,generation,workflow,validation,view}.ts`, `src/lib/api/http.ts`, and the contextual notes in `src/components/{coach/InlineProposal,coaching/PlanPreview}.tsx`. Regressions are in `tests/followthrough.test.mjs`, `tests/coaching-plan.test.mjs`, `tests/coaching-journey.test.mjs` and the existing conversation fixtures/checks.
+
+Manual live-model verification (automated calls remain mocked):
+
+1. Restart/redeploy the updated app and reload Coach. With a test profile containing confirmed equipment and two training days, send “How can I build muscle?” If Kivo offers a plan, reply “go on”. Expect an inline, validated training-only preview. Then send “I am 83kg, 178cm. I want a planned weekly workout.” Expect a proposal without another generic offer.
+2. Reply “go on” repeatedly to a pending preview. Check that its proposal ID stays the same, no new generation occurs and the active plan/version stays unchanged. Only `Confirm & save` may activate it. Then verify Home and Training show the confirmed plan.
+3. In a test account with missing equipment/days, ask for a weekly workout. Answer the equipment question (“Dumbbells” or “Bodyweight only”), then “Only twice a week” if asked about availability. Expect one question at a time and a preview as soon as the essentials are known. Verify Settings/Profile values remain unchanged; the plan identifies conversation-specific details.
+4. Try “Yes, create it”, “Make me a 2-day workout plan”, “Change the second workout”, and “Use dumbbells instead” in relevant context. Verify existing equipment/time/day ceilings and profile-goal distinctions. Ask “What is progressive overload?” and “How should I recover?”; these should remain explanations.
+5. Explicitly request meals to test nutrition opt-in. Reject a preview or let one expire, then continue: it must not be silently saved. Use a second account to verify conversation/proposal IDs remain inaccessible, and verify rapid duplicate submissions cannot publish or generate concurrent plans.
+6. Repeat the conversation at 375px, 390px and 430px and in an installed PWA. Check the composer, software keyboard, context notes, previews and confirmation. `NAV_FIXTURE=coach npm run test:navigation` provides isolated layout checks; hosted-model quality and physical iPhone keyboard behaviour still require these live checks.
+
+Task memory is deliberately bounded to the owned recent conversation; an old task outside that window may need to be restated. Novel phrasing still depends on the configured semantic classifier and review. The tests do not certify real-model behaviour or a hosted deployment.
+
 ## Coach conversation behaviour
 
 Greetings, introductions, experience/body-measurement statements and coaching follow-ups are in scope. Semantic safety/injection checks run before narrowly defined conversational recovery. The model receives explicit saved/provided preferences separately from sourced facts mentioned by the user in the current conversation; assistant guesses are not user facts. No inferred conversation details are automatically written to Profile. Missing equipment can limit exercise cards without blocking useful general coaching.
 
 The active conversation is restored from its URL UUID through the authenticated API. Start fresh conversation clears that UUID and starts new context; old saved chats remain selectable. Failed optimistic bubbles are removed and wrong/stale-conversation replies are ignored. Reload saved chat reconciles uncertain network results before retrying.
 
-See [the conversation-fix report](docs/coach-conversation-fix.md) for the confirmed causes, changed files, exact six-turn regression, manual test steps and remaining limitations. Tests mock all paid provider calls. Source and safety instructions remain separate from untrusted context, following [official OpenAI prompting guidance](https://developers.openai.com/api/docs/guides/prompt-engineering).
+Tests mock all paid provider calls. Source and safety instructions remain separate from untrusted context, following [official OpenAI prompting guidance](https://developers.openai.com/api/docs/guides/prompt-engineering).
 
 ## Saved conversations and meal plans
 
@@ -174,6 +281,33 @@ Usage reservations are charged pessimistically before each call and reconciled w
 Usage rows contain ownership, stage/model, counts/cost estimates and status, not prompts or health notes. No application request/credential diagnostics are logged. All private JSON uses `Cache-Control: private, no-store`; Proxy preserves refreshed session cookies/cache headers. Origin checks defend browser mutations, while verified bearer/cookie authentication and RLS enforce ownership. Spoofable forwarding or user-ID headers are not trusted; Supabase Auth's IP-based limits and deployment-level abuse protection should be configured rather than inventing an IP identity from arbitrary headers.
 
 Account deletion requires the exact confirmation text plus a newly verified current password. The server deletes only the authenticated user's Auth record; foreign keys remove private profiles, preferences, conversations, messages, meal plans, leases, user budget/usage rows, and a trigger clears transient user rate buckets. Non-identifying global aggregates can remain. Deleting current rows does not erase provider backups, hosting logs, emails or previously sent AI-provider data; those follow their own retention policies. `store:false` on OpenAI responses does not promise zero provider retention.
+
+## AI quota diagnosis and controlled development testing
+
+Paid Coach uses database-shared admission and budgets, including when running `next dev`. `reserve_ai_usage` checks the per-user and global UTC-day buckets in `ai_budgets` against the next stage's full reservation, not just completed usage. The reservation intentionally uses UTF-8 prompt/context/schema bytes plus output allowance and overhead as a conservative bound. `settle_ai_usage` replaces that reservation with known provider token usage; unknown usage remains conservatively charged. A rejected reservation rolls back and does not add a usage event. Remaining allowance below the next reservation can legitimately block a call even when the counter is below the daily cap.
+
+`TOKEN_BUDGET` and `COST_BUDGET` identify daily limits; `RATE_LIMITED` identifies minute admission and `BUSY` identifies concurrency. Application responses preserve those codes. Daily errors and Retry-After point to the next midnight UTC; minute/concurrency responses no longer masquerade as a daily token budget. SQL errors currently do not identify whether the user or global bucket rejected a reservation: an authorised read-only audit of both counters and configured limits is needed to distinguish scope.
+
+Audit only aggregate budget/event fields, never credentials or conversation text. For a UTC day, reconcile each surviving user's `ai_budgets.tokens` with `coalesce(input_tokens,reserved_input)+coalesce(output_tokens,reserved_output)` across that user's `usage_events`. Inspect uncompleted events and leases before attributing unknown usage to a bug. Global aggregates can exceed retained user events after account deletion: user-scoped events/budgets cascade away, while non-identifying global usage intentionally remains. Never erase legitimate history or refund unknown usage simply to unblock testing. Dollar counters are not proof of zero spend when prices are unset: cost is unknown and USD caps cannot be enabled without configured prices.
+
+For live development testing, use separate Supabase and OpenAI development projects/credentials, isolated from production users and counters. Keep production configuration unchanged. A controlled single-developer example for that isolated environment is:
+
+```dotenv
+COACH_DAILY_TOKEN_LIMIT=100000
+COACH_GLOBAL_DAILY_TOKEN_LIMIT=100000
+COACH_REQUESTS_PER_MINUTE=2
+COACH_GLOBAL_REQUESTS_PER_MINUTE=4
+COACH_MAX_CONCURRENT=1
+COACH_DAILY_COST_USD=0.50
+COACH_GLOBAL_DAILY_COST_USD=0.50
+# Set these to current prices for the actual configured development model:
+OPENAI_INPUT_PRICE_PER_MILLION=
+OPENAI_OUTPUT_PRICE_PER_MILLION=
+```
+
+Fill both price fields before enabling the example USD caps; missing pricing fails closed. These are application estimates, not a guarantee about the provider invoice or other uses of a key. Monitor provider billing too. Run one bounded conversation/plan scenario at a time with existing output/time limits and inspect settled events after each. If the daily allowance cannot cover another reservation, wait for UTC reset or stop that day's test; do not switch production accounts or clear its counters. Simply setting `NODE_ENV=development` does not isolate quotas.
+
+Quota-reporting changes are in `src/lib/coach/{limits,usage,service,http}.ts`, `src/lib/persistence/{shared-ai,coach-http}.ts`, `src/lib/coaching/errors.ts` and `src/lib/api/http.ts`. Regressions live in `tests/budget-errors.test.mjs` and `tests/database.test.mjs`. No production limits, reservation arithmetic, accounting records or database migrations are changed by the reporting fix.
 
 ## Environment reference
 

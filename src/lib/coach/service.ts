@@ -8,7 +8,7 @@ import { safetyMessages } from './safety';
 import { retrieveExercises, validateExerciseIds } from './exercises';
 import { formatResponse, type CoachPayload } from './format';
 import { type CoachProvider, ProviderFailure } from './provider';
-import { CoachLimitError } from './limits';
+import { CoachLimitError,coachLimitMessage } from './limits';
 
 export type CoachResult = { httpStatus: number; body: CoachPayload; retryAfter?: number };
 export function coachError(code: string, message: string, httpStatus: number, status: 'error' | 'unavailable' | 'rate_limited' = 'error'): CoachResult {
@@ -55,8 +55,8 @@ export async function runCoach(input: CoachInput, config: CoachConfig, providerF
     if (!Object.values(review).every(Boolean)) throw new ProviderFailure('INVALID_OUTPUT');
     return { httpStatus: 200, body: formatResponse({ message: draft.message, category: ['greeting','fitness_profile','coaching_followup'].includes(scope.category) ? scope.category as 'greeting'|'fitness_profile'|'coaching_followup' : scope.topic === 'other' ? 'fitness' : scope.topic, status: 'ok', mode: 'live', exerciseIds: draft.exerciseIds }, retrieved.exercises) };
   } catch (error) {
-    if (error instanceof CoachLimitError) return { ...coachError(error.code, 'The Coach usage limit has been reached. Please try again later.', 429, 'rate_limited'), retryAfter: error.retryAfter };
-    if (error instanceof ProviderFailure && error.code === 'PROVIDER_TIMEOUT') return coachError('PROVIDER_TIMEOUT', 'The AI coach took too long to respond. Please try again.', 504);
+    if (error instanceof CoachLimitError) return { ...coachError(error.code, coachLimitMessage(error), 429, 'rate_limited'), retryAfter: error.retryAfter };
+    if (error instanceof ProviderFailure && error.code === 'PROVIDER_TIMEOUT') return coachError('PROVIDER_TIMEOUT', 'Kivo took too long to respond. Please try again.', 504);
     if (error instanceof ProviderFailure && error.code === 'PROVIDER_ERROR') return coachError('PROVIDER_UNAVAILABLE', 'The AI service is unavailable right now. Please try again later.', 502);
     return coachError('RESPONSE_UNAVAILABLE', 'I could not produce a validated coaching response. Please rephrase your fitness or nutrition question and try again.', 502);
   }
