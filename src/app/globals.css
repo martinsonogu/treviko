@@ -147,3 +147,18 @@ html.coachKeyboardOpen{scroll-padding-block-end:12px}
 .typingDots>span:nth-child(2){animation-delay:.18s}.typingDots>span:nth-child(3){animation-delay:.36s}
 @keyframes kivo-typing{0%,60%,100%{opacity:.45;transform:translateY(0)}30%{opacity:.95;transform:translateY(-2px)}}
 @media(prefers-reduced-motion:reduce){.typingDots>span{animation:none;opacity:.8;transform:none}}
+
+/* Coach sheets keep their heading and close control visible above scrolling content. */
+.coachDialog{padding:0;overflow:hidden;max-height:calc(var(--coach-viewport-height,100dvh) - 40px)}
+.coachDialog[open]{display:flex;flex-direction:column}
+.coachDialogHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid #dfe6df;flex-shrink:0}
+.coachDialogHeader h2{margin:0;outline-offset:4px}.coachDialogHeader button{flex-shrink:0}
+.coachDialogBody{padding:20px 22px;overflow-y:auto;overscroll-behavior:contain;min-height:0;scroll-padding:20px}
+.coachDialogBody>details{margin-top:16px}.coachDialogBody summary,.preferenceSection summary{min-height:44px;padding:10px 0;cursor:pointer}
+.historyContent,.coachPreferenceGroups{display:grid;gap:16px}.historyContent .conversationHistory{margin:0}
+.historyActions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.historySearch input{min-height:44px}
+.historyRow[aria-current=true]{border-color:#176248;background:#e4f4e9}.historyRow time{flex-shrink:0;font-size:13px;color:#496457}
+.historyManage{border-top:1px solid #d5e2d8;padding-top:16px}.historyManage h3{font-size:16px;margin:0 0 12px}.historyDeleteConfirm{margin-top:12px}.historyDeleteConfirm p{margin-top:0}
+.historyDelete{color:#8b2929;min-height:44px}.historyManage .chips{align-items:center}
+.coachPreferenceGroups h3{font-size:17px;margin:0}.coachPreferenceGroups>p{margin:0}.preferenceSection{border-top:1px solid #dfe6df}.preferenceSection fieldset{margin:8px 0 0}
+@media(max-width:650px){.coachDialog{width:100%;max-width:100%;margin:auto 0 0;border-radius:20px 20px 0 0;max-height:calc(var(--coach-viewport-height,100dvh) - env(safe-area-inset-top,0px) - 12px)}.coachDialogHeader{padding:14px 16px}.coachDialogHeader h2{font-size:18px}.coachDialogBody{padding:16px 16px calc(20px + env(safe-area-inset-bottom,0px))}.historyRow{align-items:center}.coachDialog .filterGrid{grid-template-columns:1fr}}

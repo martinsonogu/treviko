@@ -414,3 +414,18 @@ For manual authenticated coaching, register/verify/log in, save beginner + dumbb
 - `src/app/layout.tsx`, `src/app/globals.css`: account navigation and responsive form/meal/profile styles extending the existing design.
 - `tests/database.test.mjs`, `milestone4.test.mjs`, `supabase.integration.test.mjs`, existing regression/smoke tests: real local PostgreSQL isolation, mocked service checks and opt-in local integration.
 - `.env.example`, `package.json`, `package-lock.json`, `README.md`: safe configuration names, maintained Supabase dependencies, development-only PostgreSQL test engine and setup/verification instructions. Existing `.env.local` values were preserved.
+
+## Coach conversation polish verification
+
+`npm run test:typing` mounts the real Coach client with mocked APIs in headless Chrome. It checks chat/plan loading, errors and retry, cancellation and restoration, scroll-up preservation, mobile keyboard-sized viewports, reduced motion, responsive History/Settings sheets, focus and Escape, request-derived titles, one preview per proposal, explicit confirmation, revisions/rejection, search, rename and confirmed conversation deletion. It makes no live AI calls. `npm run test:navigation` checks responsive navigation and safe-area clearance separately.
+
+Manual authenticated checks (375px, 390px, desktop and landscape):
+
+1. Open Coach, send a question and confirm its first request becomes the History title. Start another conversation; switch back, refresh history, search, rename, cancel deletion, then explicitly delete a disposable conversation.
+2. Request a workout preview, expand its sessions, request changes and review the new proposal. Verify Training stays unchanged until **Confirm & save**. Request a meal preview; inspect its actual suggestions, then reject it and check saved plans remain intact.
+3. Reload a conversation containing proposals; confirm messages and preview status return. Open older preview references. Confirm expired or superseded previews require a fresh preview.
+4. Open Settings. Change temporary experience/equipment, close/reopen, reset to saved preferences and verify Profile has not changed. Test optional food/context groups, Privacy and Connection details.
+5. Open the phone keyboard, enter multiple lines, send with Ctrl/Cmd+Enter, scroll up during a reply, and check messages/composer/bottom navigation do not overlap. Test failed requests and retry using an appropriate development environment.
+6. With keyboard and a screen reader, open both sheets, check their headings/labels, tab within them, close with Escape and confirm focus returns. Check reduced-motion mode.
+
+Physical iOS/Android keyboards, installed-PWA safe areas, screen-reader announcements and a hosted/live-model account journey still require device/manual verification. Browser emulation does not establish physical-device compatibility. This UI change needs no database migration and does not change AI services, quotas, confirmation APIs or ownership rules.
