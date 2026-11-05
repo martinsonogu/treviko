@@ -8,7 +8,7 @@ import type {UserProfile} from '../profile/schema';
 import type {Food,Recipe} from '../nutrition/schema';
 import {getProfile} from '../profile/service';
 import {profileForCoach} from '../profile/personalisation';
-import {getCoachConfig} from '../coach/config';
+import {getCoachConfig,type CoachConfig} from '../coach/config';
 import {preflightScope} from '../coach/scope';
 import {safetyMessages} from '../coach/safety';
 import {listFoods,listRecipes} from '../nutrition/service';
@@ -16,23 +16,28 @@ import {createConversation,getConversation,containsSecret} from '../persistence/
 import {buildCoachHistory} from '../coach/history';
 import {acquireSharedRequest,persistentUsageMonitor} from '../persistence/shared-ai';
 import {createAdminSupabase} from '../supabase/admin';
-import {getActivePlan,getProfileGuard,getPendingProposal,getProposal,storeProposal,publishProposal} from './service';
+import {getActivePlan,getProfileGuard,getProposal,storeProposal,publishProposal} from './service';
+import type {ConversationPreferences} from './conversation-preferences';
+import {latestProposalReference} from './proposal-reference';
 import {generatePlanProposal} from './generation';
 import {validatePlanPayload} from './validation';
 
-export async function proposePlan(context:AuthContext,body:{message:string;conversationId?:string;scope?:PlanScope;goal?:UserProfile['goals'][number]},request:Request){
+export async function proposePlan(context:AuthContext,body:{message:string;conversationId?:string;proposalId?:string;scope?:PlanScope;goal?:UserProfile['goals'][number]},request:Pick<Request,'signal'>,admission?:{conversationId:string;config:CoachConfig;conversationPreferences?:ConversationPreferences;conversationGoal?:UserProfile['goals'][number]}){
  if(containsSecret(body))throw new ApiError(400,'CREDENTIALS_REJECTED','Do not submit credentials.');
- const config=await planStep('configuration',()=>getCoachConfig());let release:(()=>Promise<void>)|undefined;let createdConversationId:string|undefined;let proposalReady=false;
+ const config=await planStep('configuration',()=>admission?.config??getCoachConfig());let release:(()=>Promise<void>)|undefined;let createdConversationId:string|undefined;let proposalReady=false;
  try{
   // Reuse the existing user/global concurrency and admission controls, including for new plans.
   const savedConversation=body.conversationId?await planStep('conversation',()=>getConversation(context,body.conversationId!,10)):null;
   const conversation=savedConversation??await planStep('conversation',()=>createConversation(context,'Personal coaching plan'));
   if(!savedConversation)createdConversationId=conversation.id;
-  release=await planStep('admission',()=>acquireSharedRequest(context.userId,conversation.id,config));
+  if(admission?.conversationId!==conversation.id)release=await planStep('admission',()=>acquireSharedRequest(context.userId,conversation.id,config));
   const profileGuard=await planStep('profile',()=>getProfileGuard(context));
-  const [profile,existing,pending]=await Promise.all([planStep('profile',()=>getProfile(context)),planStep('active_plan',()=>getActivePlan(context)),planStep('pending_proposal',()=>getPendingProposal(context))]);
+  const [profile,existing]=await Promise.all([planStep('profile',()=>getProfile(context)),planStep('active_plan',()=>getActivePlan(context))]);
+  const reference=body.proposalId??(savedConversation?latestProposalReference(savedConversation.messages):undefined);
+  let pending=null;
+  if(reference){try{pending=await planStep('pending_proposal',()=>getProposal(context,reference));}catch(error){if(!(error instanceof ApiError&&error.status===404&&!body.proposalId))throw error;}}
   const history=savedConversation?buildCoachHistory(savedConversation.messages,body.message):[];
-  const payload=await generatePlanProposal({message:body.message,scope:body.scope,goal:body.goal,profile,existing,proposalUnderReview:pending?.base_version===(existing?.version??0)?pending.payload:undefined,foods:[],recipes:[],loadNutrition:async()=>{const [{foods},recipes]=await Promise.all([listFoods(context),listRecipes(context)]);return {foods,recipes};},history},config,await planStep('admission',()=>persistentUsageMonitor(context.userId,config)),AbortSignal.any([request.signal,AbortSignal.timeout(config.requestTimeoutMs)]));
+  const payload=await generatePlanProposal({message:body.message,scope:body.scope,goal:body.goal,profile,existing,conversationPreferences:admission?.conversationPreferences,conversationGoal:admission?.conversationGoal,proposalUnderReview:pending?.status==='pending'&&new Date(pending.expires_at).getTime()>Date.now()&&pending.base_version===(existing?.version??0)?pending.payload:undefined,foods:[],recipes:[],loadNutrition:async()=>{const [{foods},recipes]=await Promise.all([listFoods(context),listRecipes(context)]);return {foods,recipes};},history},config,await planStep('admission',()=>persistentUsageMonitor(context.userId,config)),AbortSignal.any([request.signal,AbortSignal.timeout(config.requestTimeoutMs)]));
   const proposal=await planStep('persistence',()=>storeProposal(context,payload,existing?.version??0,preferenceFingerprint(profile),profileGuard));
   proposalReady=true;
   let historySaved=true;

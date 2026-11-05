@@ -56,13 +56,13 @@ export function programmeQuality(days:ProgrammeDay[],candidates:Exercise[],conte
  if(fullProgramme&&context.minutes>=20){
   const available=new Set<string>(candidates.map(e=>broadPattern(programmingMetadata(e).pattern)));
   for(const pattern of ['push','pull','knee','hip']){
-   if(!available.has(pattern)){warnings.push(`The current library/equipment cannot cover ${pattern} work; ask your coach about suitable additional options.`);continue;}
+   if(!available.has(pattern)){warnings.push(`The current library/equipment cannot cover ${pattern} work; ask Kivo about suitable additional options.`);continue;}
    const minimum=context.goal==='muscle_gain'&&days.length>=3&&context.minutes>=30?Math.min(policy.patternExposures,days.length):1;
    if((exposures.get(pattern)?.size??0)<minimum)errors.push({rule:'weekly_balance',detail:`Include available ${pattern} work on at least ${minimum} day(s) across the week.`});
   }
  }
  for(const day of days){const next=days.find(d=>d.weekday===(day.weekday%7)+1);if(!next)continue;const muscles=(d:ProgrammeDay)=>new Set(d.exercises.flatMap(e=>exercises.find(x=>x.id===e.exerciseId)!.primaryMuscles));const shared=[...muscles(day)].filter(m=>muscles(next).has(m));const repeated=day.exercises.filter(e=>exercises.find(x=>x.id===e.exerciseId)!.primaryMuscles.some(m=>shared.includes(m))).reduce((n,e)=>n+e.sets,0);if(repeated>=6)errors.push({rule:'recovery',detail:`Days ${day.weekday} and ${next.weekday} repeat substantial work for the same muscles without a recovery day. Redistribute it.`});}
- if(fullProgramme&&context.minutes<20&&['push','pull','knee','hip'].some(pattern=>!exposures.has(pattern)))warnings.push('These short sessions do not cover every major movement pattern yet. Ask Coach to rotate movements across days as your time allows.');
+ if(fullProgramme&&context.minutes<20&&['push','pull','knee','hip'].some(pattern=>!exposures.has(pattern)))warnings.push('These short sessions do not cover every major movement pattern yet. Ask Kivo to rotate movements across days as your time allows.');
  if(days.length===1)warnings.push('One training day is a starting option. Frequency and total work can grow as your availability allows.');
  if(context.targetMuscles.length)warnings.push('This is a focused muscle programme; it does not claim full-body coverage.');
  if(context.goal==='muscle_gain'&&context.minutes<30)warnings.push('Short sessions prioritise a manageable starting dose; add volume gradually if recovery and availability allow.');

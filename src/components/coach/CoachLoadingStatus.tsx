@@ -1,4 +1,4 @@
-export default function CoachLoadingStatus({restoring,busy,generating}:{restoring:boolean;busy:boolean;generating:boolean}) {
- const label=restoring?'Loading your saved conversation…':generating?'Coach is preparing your response…':'Updating your conversation…';
- return <div className="coachLoadingStatus muted" role="status" aria-live="polite" aria-atomic="true">{(restoring||busy)&&<><span className="loadingSpinner" aria-hidden="true"/><span>{label}</span></>}</div>;
+export default function CoachLoadingStatus({restoring,busy,generating,typingLabel='Kivo is typing'}:{restoring:boolean;busy:boolean;generating:boolean;typingLabel?:string}) {
+ const label=restoring?'Loading your saved conversation…':generating?typingLabel:'Updating your conversation…';
+ return <div className={`coachLoadingStatus muted${generating?' visuallyHidden':''}`} role="status" aria-live="polite" aria-atomic="true">{(restoring||busy)&&<>{!generating&&<span className="loadingSpinner" aria-hidden="true"/>}<span>{label}</span></>}</div>;
 }

@@ -1,13 +1,14 @@
 import 'server-only';
+import {PlanPreferenceError} from '../coaching/conversation-preferences';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { AuthenticationError, requireUser, type AuthContext } from '../auth/session';
 import { SupabaseConfigurationError } from '../supabase/config';
-export class ApiError extends Error { constructor(public status: number, public code: string, message: string) { super(message); } }
+export class ApiError extends Error { constructor(public status: number, public code: string, message: string,public retryAfter?:number) { super(message); } }
 export function json(data: unknown, status = 200) { return NextResponse.json({ data, error: null }, { status, headers: { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } }); }
 export function apiFailure(error: unknown) {
-  const issue = error instanceof ApiError ? error : error instanceof AuthenticationError ? new ApiError(401, 'AUTH_REQUIRED', error.message) : error instanceof SupabaseConfigurationError ? new ApiError(503, 'NOT_CONFIGURED', error.message) : error instanceof z.ZodError ? new ApiError(400, 'INVALID_INPUT', 'Check the supplied fields and try again.') : new ApiError(503, 'UNAVAILABLE', 'This operation is unavailable. Please try again.');
-  return NextResponse.json({ data: null, error: { code: issue.code, message: issue.message } }, { status: issue.status, headers: { 'Cache-Control': 'private, no-store',...(issue.status===429?{'Retry-After':'60'}:{}) } });
+  const issue = error instanceof ApiError ? error : error instanceof PlanPreferenceError ? new ApiError(422,error.code,error.message) : error instanceof AuthenticationError ? new ApiError(401, 'AUTH_REQUIRED', error.message) : error instanceof SupabaseConfigurationError ? new ApiError(503, 'NOT_CONFIGURED', error.message) : error instanceof z.ZodError ? new ApiError(400, 'INVALID_INPUT', 'Check the supplied fields and try again.') : new ApiError(503, 'UNAVAILABLE', 'This operation is unavailable. Please try again.');
+  return NextResponse.json({ data: null, error: { code: issue.code, message: issue.message } }, { status: issue.status, headers: { 'Cache-Control': 'private, no-store',...(issue.status===429?{'Retry-After':String(issue.retryAfter??60)}:{}) } });
 }
 export function checkOrigin(request: Request) {
   const origin = request.headers.get('origin');

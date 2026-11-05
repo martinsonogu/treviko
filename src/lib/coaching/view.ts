@@ -1,3 +1,4 @@
+import {profileForPlan} from './conversation-preferences';
 import 'server-only';
 import type {AuthContext} from '../auth/session';
 import {getProfile} from '../profile/service';
@@ -12,7 +13,8 @@ const unknown=():Nutrients=>({energyKcal:null,proteinG:null,carbohydrateG:null,f
 export async function getCoachingView(context:AuthContext){
  const [profile,plan]=await Promise.all([getProfile(context),getActivePlan(context)]);
  const today=dailyTraining(plan,profile.timeZone);
- const compatibleIds=new Set(planCandidates(profile).map(e=>e.id));
+ let compatibleProfile=profile;try{compatibleProfile=profileForPlan(profile,plan?.payload.conversationPreferences);}catch{/* A changed profile requires review against current restrictions. */}
+ const compatibleIds=new Set(planCandidates(compatibleProfile).map(e=>e.id));
  const trainingNeedsReview=Boolean(plan?.payload.days.some(d=>d.exercises.some(e=>!compatibleIds.has(e.exerciseId))));
  const greeting=welcomePeriod(profile.timeZone);
  const [{foods},recipes]=plan?.payload.meals.length?await Promise.all([listFoods(context),listRecipes(context)]):[{foods:[]},[]];

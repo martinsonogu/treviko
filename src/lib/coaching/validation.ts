@@ -1,3 +1,4 @@
+import {profileForPlan} from './conversation-preferences';
 import {exercises} from '../exercises';
 import {experienceLevels} from '../training/types';
 import {isEquipmentCompatible,prescribe} from '../training/service';
@@ -17,9 +18,11 @@ export class PlanValidationError extends ApiError{constructor(message:string,pub
 function invalid(message:string,rule:PlanValidationError['rule']):never{throw new PlanValidationError(message,rule);}
 export function validatePlanPayload(value:unknown,profile:UserProfile,foods:Food[],recipes:Recipe[]):PlanPayload{
  const plan=planPayloadSchema.parse(value);
+ profile=profileForPlan(profile,plan.conversationPreferences);
  if((includesTraining(plan.scope)&&!plan.days.length)||(!includesTraining(plan.scope)&&plan.days.length)||(includesNutrition(plan.scope)&&!plan.meals.length)||(!includesNutrition(plan.scope)&&plan.meals.length))invalid('The proposal must contain only the requested training or nutrition components.','scope');
  if(/\b\d+(?:[.,]\d+)?\s*(?:kcal|calories?|kilocalories?|grams?\s+(?:of\s+)?(?:protein|fat|carb)|g\s+(?:protein|fat|carb))\b|[£$€]\s*\d/i.test(JSON.stringify(plan)))invalid('Numerical nutrition and grocery price claims are unavailable in AI proposals.','nutrition_numbers');
  if(containsSecret(plan))invalid('The proposal contains text that cannot be saved.','credentials');
+ if(plan.conversationPreferences?.trainingDays&&profile.trainingDays!==null&&plan.days.length>profile.trainingDays)invalid('The proposal exceeds the training days confirmed for this plan.','weekly_balance');
  if(plan.experience!==(profile.experience??'beginner'))invalid('Experience changed. Update your profile and request a new proposal.','experience');
  if(!isEquipmentCompatible(plan.equipment,profile.equipment??[]))invalid('The proposal assumes equipment that is not confirmed in your profile.','equipment');
  if(new Set(plan.equipment).size!==plan.equipment.length||new Set(plan.days.map(d=>d.weekday)).size!==plan.days.length||new Set(plan.meals.map(m=>m.slot)).size!==plan.meals.length)invalid('The proposal contains duplicate days, equipment or meal slots.','duplicate_options');

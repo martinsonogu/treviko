@@ -62,7 +62,7 @@ test('completed onboarding redirects home while /profile still renders saved pre
  }finally{session.requirePageUser=previousUser;service.getProfile=previousProfile;}
 });
 test('Coach loading status is accessible, distinguishes generation and disappears when idle',()=>{
- const generating=renderToStaticMarkup(React.createElement(Loading,{restoring:false,busy:true,generating:true}));assert.match(generating,/role="status"/);assert.match(generating,/aria-live="polite"/);assert.match(generating,/loadingSpinner[^>]*aria-hidden="true"/);assert.match(generating,/Coach is preparing your response/);
+ const generating=renderToStaticMarkup(React.createElement(Loading,{restoring:false,busy:true,generating:true}));assert.match(generating,/role="status"/);assert.match(generating,/aria-live="polite"/);assert.match(generating,/visuallyHidden/);assert.doesNotMatch(generating,/loadingSpinner/);assert.match(generating,/Kivo is typing/);
  const idle=renderToStaticMarkup(React.createElement(Loading,{restoring:false,busy:false,generating:false}));assert.doesNotMatch(idle,/loadingSpinner|preparing your response/);
  const restoring=renderToStaticMarkup(React.createElement(Loading,{restoring:true,busy:false,generating:false}));assert.match(restoring,/Loading your saved conversation/);
  const managing=renderToStaticMarkup(React.createElement(Loading,{restoring:false,busy:true,generating:false}));assert.match(managing,/Updating your conversation/);assert.doesNotMatch(managing,/preparing your response/);

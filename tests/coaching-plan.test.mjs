@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 import {loadSource as load} from './load-source.mjs';
 const {emptyProfile}=load('src/lib/profile/schema.ts');
 const {materialiseDraft,validatePlanPayload}=load('src/lib/coaching/validation.ts');
-const {generatePlanProposal}=load('src/lib/coaching/generation.ts');
+const {generatePlanProposal,planInstructions}=load('src/lib/coaching/generation.ts');
+const {coachPersonalityInstructions}=load('src/lib/coach/personality.ts');
+test('plan generation shares Kivo identity without changing scope, grounding or confirmation rules',()=>{assert.ok(planInstructions.startsWith(coachPersonalityInstructions));assert.match(planInstructions,/never claim to have saved it/);assert.match(planInstructions,/training_only: workouts and NO meals/);assert.match(planInstructions,/Select exact candidate exercise IDs only/);assert.match(planInstructions,/no model-generated calorie/);});
 const {getCoachConfig}=load('src/lib/coach/config.ts');
 const {dailyTraining}=load('src/lib/coaching/today.ts');
 const profile={...emptyProfile(),experience:'intermediate',equipment:['dumbbells'],goals:['muscle_gain'],trainingDays:3,sessionMinutes:30};
@@ -33,8 +35,32 @@ test('public landing and personalised dashboards show real plan states and match
  const payload=materialiseDraft(draft,profile,[],[]);const plan={id:'11111111-1111-4111-8111-111111111111',version:3,status:'active',payload,mealPlanId:null};const base={plan:null,greeting:'Good morning',displayName:'Alex',onboardingComplete:true,today:{weekday:'Monday',workout:null},dietaryPattern:'vegetarian',meals:[],totals:{energyKcal:null,proteinG:null,carbohydrateG:null,fatG:null},shopping:[]};
  const markup=(Component,view)=>render(React.createElement(Component,view?{view}:{}));
  const landing=markup(PublicLanding);assert.match(landing,/Get started/);assert.match(landing,/Explore exercises/);assert.equal(landing.includes('Alex'),false);
- const noPlan=markup(components.default,base);assert.match(noPlan,/Create my training plan/);assert.match(noPlan,/Talk to my coach/);assert.match(noPlan,/No workout history/);assert.equal(noPlan.includes('Training day'),false);
+ const noPlan=markup(components.default,base);assert.match(noPlan,/Create my training plan/);assert.match(noPlan,/Talk to Kivo/);assert.match(noPlan,/No workout history/);assert.equal(noPlan.includes('Training day'),false);
  const view={...base,plan,today:{weekday:'Monday',workout:payload.days[0]},meals:payload.meals.map(m=>({...m,nutrition:null,compatible:null,sourceUrls:[]}))};
  const home=markup(components.default,view),training=markup(components.TrainingPlan,view),nutrition=markup(components.NutritionPlan,view);assert.match(home,/muscle gain/);assert.match(home,/Strength session/);assert.match(home,/Lentil and vegetable dinner/);assert.match(home,/Unknown/);assert.match(training,/\/training\/exercises\/goblet-squat/);assert.match(nutrition,/Nutritional values unavailable/);assert.match(nutrition,/Ingredient quantities are unavailable/);assert.match(nutrition,/Lentil and vegetable dinner/);
  const rest=markup(components.default,{...view,today:{weekday:'Tuesday',workout:null}});assert.match(rest,/No workout is scheduled today/);
+});
+
+test('conversational revisions preserve active and selected-preview goals without changing saved preferences',async()=>{
+ const saved={...profile,goals:['strength']};
+ const payload={...materialiseDraft(draft,profile,[],[]),primaryGoal:'muscle_gain',trainingGoal:'muscle_gain',goalSource:'request'};
+ const active={id:'55555555-5555-4555-8555-555555555555',version:1,payload};const original=JSON.stringify(saved);
+ for(const preview of [false,true]){
+  const mock=transport({...draft,meals:[]},{...scope,trainingRequested:true,nutritionRequested:false,requestedGoal:null});
+  const result=await generatePlanProposal({...context,message:'Replace one exercise in this programme.',profile:saved,existing:preview?null:active,...(preview?{proposalUnderReview:payload}:{})},config,monitor,new AbortController().signal,mock);
+  assert.equal(result.primaryGoal,'muscle_gain');assert.equal(result.savedProfileGoal,'strength');assert.equal(result.goalSource,preview?'request':'active_plan');assert.equal(JSON.stringify(saved),original);
+  const supplied=JSON.parse(mock.calls[0].input[0].content);if(!preview)assert.equal(supplied.activeTraining[0].exercises[0].name,'Goblet Squat');
+ }
+});
+
+test('confirmed conversation-only availability is validated in the plan snapshot without overwriting the saved profile',async()=>{
+ const saved={...load('src/lib/profile/schema.ts').emptyProfile(),goals:['muscle_gain']};const before=JSON.stringify(saved);
+ const conversationPreferences={equipment:['dumbbells'],trainingDays:2,sessionMinutes:45,experience:'intermediate'};
+ const output={...draft,sessionMinutes:45,days:draft.days.slice(0,2).map((day,index)=>({...day,weekday:index===0?1:4})),meals:[]};
+ const mock=transport(output,{...scope,trainingRequested:true,nutritionRequested:false,requestedGoal:null});
+ const result=await generatePlanProposal({...context,message:'go on',profile:saved,conversationPreferences,history:[{role:'user',content:'I can train twice a week. I have dumbbells.'},{role:'assistant',content:'I can create a workout plan.'}]},config,monitor,new AbortController().signal,mock);
+ assert.equal(result.days.length,2);assert.deepEqual(result.conversationPreferences,conversationPreferences);assert.deepEqual(validatePlanPayload(result,saved,[],[]).equipment,['dumbbells']);assert.equal(JSON.stringify(saved),before);
+ assert.equal(load('src/lib/coaching/schema.ts').proposalDraftSchema.safeParse({...output,conversationPreferences}).success,false,'The model cannot supply its own confirmation metadata');
+ const newer=transport(output,{...scope,trainingRequested:true,nutritionRequested:false,requestedGoal:'strength'});
+ const revised=await generatePlanProposal({...context,message:'Create a strength plan instead.',profile:saved,conversationPreferences,conversationGoal:'muscle_gain'},config,monitor,new AbortController().signal,newer);assert.equal(revised.primaryGoal,'strength','The current explicit goal takes precedence over older conversational interests');
 });

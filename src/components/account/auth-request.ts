@@ -15,9 +15,11 @@ export function authErrorMessage(code:unknown,mode:AuthMode){
  }
 }
 export async function submitAuth(mode:AuthMode,values:{email:string;password:string},next:string,dependencies:{lock:{busy:boolean};request:typeof fetch;navigate:(path:string)=>void;clearPassword:()=>void}){
+ // Call fetch without binding it to the dependency object (Window requires this).
+ const {request}=dependencies;
  if(dependencies.lock.busy)return {kind:'ignored' as const};dependencies.lock.busy=true;let navigating=false;
  try{
-  let response;try{response=await dependencies.request(`/api/v1/auth/${mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mode==='recover'?{email:values.email}:mode==='password'?{password:values.password}:values),signal:AbortSignal.timeout(20000)});}catch{throw new AuthRequestError('Couldn’t connect. Check your connection and try again.');}
+  let response;try{response=await request(`/api/v1/auth/${mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mode==='recover'?{email:values.email}:mode==='password'?{password:values.password}:values),signal:AbortSignal.timeout(20000)});}catch{throw new AuthRequestError('Couldn’t connect. Check your connection and try again.');}
   let body;try{body=await response.json();}catch{throw new AuthRequestError('Account access is temporarily unavailable. Please try again later.');}
   if(!response.ok)throw new AuthRequestError(authErrorMessage(body.error?.code,mode));
   if(mode==='login'&&body.data?.authenticated!==true)throw new AuthRequestError('Sign-in could not be confirmed. Please try again.');

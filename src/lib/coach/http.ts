@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { coachRequestSchema, profileSchema } from './schemas';
 import { configurationMessage, getCoachConfig, type CoachConfig } from './config';
 import { loadStoredCoachProfile, resolveCoachIdentity, type CoachPrincipal, type IdentityResolver } from './identity';
-import { coachLimiter, CoachLimitError, type CoachLimiter } from './limits';
+import { coachLimiter, CoachLimitError,coachLimitMessage, type CoachLimiter } from './limits';
 import { createOpenAIProvider, type CoachProvider } from './provider';
 import { coachError, runCoach, type CoachResult } from './service';
 
@@ -53,7 +53,7 @@ export function createCoachHandler(dependencies: CoachHttpDependencies = {}) {
     catch { return send(coachError('INVALID_CONFIGURATION', 'The AI coach configuration needs attention on the server. No live response was generated.', 503, 'unavailable')); }
     let principal: CoachPrincipal | null;
     try { principal = await (dependencies.identity ?? resolveCoachIdentity)(request); }
-    catch { return send(coachError('UNAUTHORIZED', 'Unable to verify access to the AI coach.', 401)); }
+    catch { return send(coachError('UNAUTHORIZED', 'Unable to verify access to Kivo.', 401)); }
     if (!principal || (principal.kind === 'anonymous' && !config.allowAnonymous)) return send(coachError('AUTH_REQUIRED', 'Live AI access requires authentication on this deployment. The account integration is not configured yet.', 401));
     let release: (() => void) | undefined;
     try {
@@ -71,8 +71,8 @@ export function createCoachHandler(dependencies: CoachHttpDependencies = {}) {
       const result = await runCoach(input, config, () => (dependencies.provider ?? createOpenAIProvider)(config), signal);
       return send(result);
     } catch (error) {
-      if (error instanceof CoachLimitError) return send({ ...coachError(error.code, 'Coach is at its usage limit. Please try again later.', 429, 'rate_limited'), retryAfter: error.retryAfter });
-      return send(coachError('COACH_UNAVAILABLE', 'The AI coach is unavailable right now. Please try again later.', 503));
+      if (error instanceof CoachLimitError) return send({ ...coachError(error.code, coachLimitMessage(error), 429, 'rate_limited'), retryAfter: error.retryAfter });
+      return send(coachError('COACH_UNAVAILABLE', 'Kivo is unavailable right now. Please try again later.', 503));
     } finally { release?.(); }
   };
 }

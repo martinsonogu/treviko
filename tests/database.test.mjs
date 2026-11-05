@@ -57,7 +57,10 @@ test('shared SQL admission, concurrency, token/cost reservations, settlement and
   await assert.rejects(db.exec(`select public.acquire_coach_request('${B}','${conversation}',8,30,2)`),/NOT_FOUND/);
   await db.exec(`select public.release_coach_request('${lease}','${A}')`);
   const event=(await db.query(`select public.reserve_ai_usage('${A}','scope','mock',100,100,1000,2000,1,2,1,2) as id`)).rows[0].id;
+  const beforeBlocked=(await db.query('select scope,budget_day,tokens,cost_usd from public.ai_budgets order by scope')).rows;
   await assert.rejects(db.exec(`select public.reserve_ai_usage('${A}','scope','mock',900,100,1000,2000,1,2,1,2)`),/TOKEN_BUDGET/);
+  assert.deepEqual((await db.query('select scope,budget_day,tokens,cost_usd from public.ai_budgets order by scope')).rows,beforeBlocked,'Denied reservations must not inflate recorded usage');
+  assert.equal((await db.query('select * from public.usage_events')).rows.length,1);
   await assert.rejects(db.exec(`select public.reserve_ai_usage('${B}','scope','mock',100,100,1000,2000,1000,1000,0.01,2)`),/COST_BUDGET/);
   await db.exec(`select public.settle_ai_usage('${event}','${A}',true,20,10); select public.settle_ai_usage('${event}','${A}',true,20,10);`);
   assert.equal(Number((await db.query(`select tokens from public.ai_budgets where scope='user:${A}'`)).rows[0].tokens),30);

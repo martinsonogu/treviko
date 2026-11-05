@@ -11,7 +11,9 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test:db": "node --test tests/database.test.mjs",
     "nutrition:import": "node scripts/import-nutrition.mjs",
-    "test:integration": "node --env-file=.env.local --test tests/supabase.integration.test.mjs"
+    "test:integration": "node --env-file=.env.local --test tests/supabase.integration.test.mjs",
+    "test:navigation": "node scripts/check-navigation-browser.mjs",
+    "test:typing": "node scripts/check-typing-browser.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
