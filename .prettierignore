@@ -1,0 +1,18 @@
+# Generated output and dependency metadata
+node_modules/
+.next/
+out/
+build/
+coverage/
+package-lock.json
+next-env.d.ts
+*.tsbuildinfo
+.husky/_/
+
+# Credentials, administrative schema/templates and source data retain their existing format.
+.env*
+supabase/
+src/lib/nutrition/fdc-fixture.json
+
+# Historical records are not current contributor prose.
+docs/engineering-notes.md

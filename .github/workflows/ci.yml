@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# No live credentials, environment secrets, deployment or database writes.
+env:
+  HUSKY: "0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  APP_ORIGIN: http://localhost:3000
+  OPENAI_API_KEY: ""
+  OPENAI_MODEL: ""
+  OPENAI_REASONING_EFFORT: ""
+  NEXT_PUBLIC_SUPABASE_URL: ""
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
+  SUPABASE_SECRET_KEY: ""
+  USDA_FDC_API_KEY: ""
+  COACH_ALLOW_ANONYMOUS: "false"
+  COACH_LOG_USAGE: "false"
+  NUTRITION_ALLOW_FIXTURES: "true"
+  TREVIKO_LOCAL_INTEGRATION: "false"
+
+jobs:
+  checks:
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, typecheck, tests, build]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Lint
+        if: matrix.check == 'lint'
+        run: npm run lint
+      - name: Typecheck
+        if: matrix.check == 'typecheck'
+        run: npm run typecheck
+      - name: Test
+        if: matrix.check == 'tests'
+        run: npm test
+      - name: Production build
+        if: matrix.check == 'build'
+        run: npm run build
