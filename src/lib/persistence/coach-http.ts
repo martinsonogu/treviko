@@ -17,7 +17,7 @@ import {buildTaskContext,contextualTaskScope} from '../coach/task-context';
 import {planConversationPreferences,profileForPlan,missingPlanInformation,inheritPlanPreferences} from '../coaching/conversation-preferences';
 import {formatResponse} from '../coach/format';
 import {buildCoachHistory} from '../coach/history';
-import {preflightScope} from '../coach/scope';
+import {preflightScope,isConversationalGreeting} from '../coach/scope';
 import {classifyConversationAction,proposalScopeForIntent,type ConversationIntent} from '../coach/action-intent';
 import {proposePlan} from '../coaching/workflow';
 import {latestProposalReference} from '../coaching/proposal-reference';
@@ -53,7 +53,7 @@ export async function persistentCoachHandler(request:Request) {
     if(error)throw new ApiError(503,'SAVE_FAILED','The review response could not be saved. Reload before retrying.');
     return NextResponse.json({kind:'proposal',proposal:review,conversationId:body.conversationId,historySaved:true},{headers:{'Cache-Control':'private, no-store'}});
    }
-   const scope=task.acceptance&&!contextual?null:contextual??proposalScopeForIntent(routed,Boolean(activePlan||selectedPreview));
+   const scope=isConversationalGreeting(input.message)?null:task.acceptance&&!contextual?null:contextual??proposalScopeForIntent(routed,Boolean(activePlan||selectedPreview));
    if(task.acceptance&&!contextual)clarification='What would you like me to continue with?';
    if(scope){
     const conversationPreferences={...inheritPlanPreferences(saved,selectedPreview?.payload.conversationPreferences??activePlan?.payload.conversationPreferences),...planConversationPreferences(task.facts.facts)};

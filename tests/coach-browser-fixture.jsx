@@ -10,7 +10,7 @@ window.fetch=(url,options={})=>{
  requests.push({url,method:options.method??'GET',body:options.body?JSON.parse(options.body):undefined});
  if(url==='/api/v1/coach/status')return json({available:true,message:'Fixture connection'});
  if(url==='/api/v1/coach/conversations'&&options.method==='POST')return json({data:{id:conversationId,title:'Test conversation'}});
- if(url==='/api/v1/coach/conversations')return json({data:[{id:conversationId,title:'Test conversation'}]});
+ if(url==='/api/v1/coach/conversations')return json({data:[{id:conversationId,title:'Test conversation'},{id:'55555555-5555-4555-8555-555555555555',title:'New conversation',displayTitle:'Strength after a break'},{id:'66666666-6666-4666-8666-666666666666',title:'New conversation',historyState:'empty'}]});
  if(url===`/api/v1/coach/conversations/${conversationId}`&&options.method==='PATCH')return json({data:{id:conversationId,title:JSON.parse(options.body).title}});
  if(url===`/api/v1/coach/conversations/${conversationId}`&&options.method==='DELETE')return json({data:{deleted:true}});
  if(url==='/api/v1/coaching/plan/confirm')return json({data:{id:proposal.id,payload:proposal.payload,version:1}});
@@ -29,4 +29,4 @@ window.__coachTest={requests,pending,reply(kind='chat'){
  const preview=kind==='meals'?{...proposal,payload:{...proposal.payload,scope:'nutrition_only',days:[],meals:[{slot:1,name:'Lentil bowl',guidance:'Choose ingredients that suit your saved restrictions.',recipeId:null}]}}:kind==='revision'?{...proposal,base_version:1}:proposal;
  entry.resolve(Response.json(kind==='chat'?{message:content,exerciseIds:[],exercises:[],mode:'live',status:'ok',conversationId}:{kind:'proposal',proposal:preview,conversationId,historySaved:true}));
 },seed(count){messages.length=0;for(let i=0;i<count;i++)messages.push({role:i%2?'assistant':'user',content:`Earlier saved message ${i}. `+'Training context. '.repeat(6),response_mode:'live',response_status:'ok',exercises:[]});}};
-createRoot(document.getElementById('root')).render(<div className="shell authenticatedShell"><header className="topbar"><span className="brand">Treviko</span><Nav variant="desktop"/></header><main className="main"><Coach initialProfile={{}}/></main><Nav variant="mobile"/></div>);
+createRoot(document.getElementById('root')).render(<div className="shell authenticatedShell"><header className="topbar"><span className="brand">Treviko</span><Nav variant="desktop"/></header><main className="main"><Coach initialProfile={{goals:'muscle gain; strength'}}/></main><Nav variant="mobile"/></div>);

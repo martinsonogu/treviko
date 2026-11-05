@@ -1,0 +1,1 @@
+export function formatWorkoutDate(value:string,timeZone:string){const date=new Date(value);if(!Number.isFinite(date.getTime()))return 'Date unavailable';return new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone,timeZoneName:undefined}).format(date);}

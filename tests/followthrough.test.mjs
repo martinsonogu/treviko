@@ -43,7 +43,7 @@ async function harness(initial,work){
  [generation,'generatePlanProposal',async context=>{events.generated++;events.contexts.push(context);return {...proposal.payload,primaryGoal:context.goal??context.conversationGoal??proposal.payload.primaryGoal,...(context.conversationPreferences?{conversationPreferences:context.conversationPreferences}:{}),scope:context.scope};}],
  [plans,'storeProposal',async(_owner,payload)=>{const id=`44444444-4444-4444-8444-${String(events.generated).padStart(12,'0')}`;const value={...proposal,id,payload};stored.set(id,value);return value;}],
  [plans,'publishProposal',async()=>{events.published++;assert.fail('Chat must not publish a plan');}],
- [provider,'createOpenAIProvider',()=>({classify:async()=>classification,generate:async()=>({message:offer,exerciseIds:[]}),review:async()=>({inScope:true,safe:true,groundedExercises:true,honestNutrition:true,private:true})})],
+ [provider,'createOpenAIProvider',()=>({classify:async()=>classification,generate:async input=>({message:load('src/lib/coach/scope.ts').isConversationalGreeting(input.message)?'Hey! What would you like to work on today?':offer,exerciseIds:[]}),review:async()=>({inScope:true,safe:true,groundedExercises:true,honestNutrition:true,private:true})})],
  [admin,'createAdminSupabase',()=>({rpc:async(name,value)=>{assert.equal(name,'append_coach_turn');records.push({role:'user',content:value.p_message},{role:'assistant',content:value.p_reply,response_status:value.p_status,category:value.p_category});return {error:null};}})],
  ];
  await stubs(values,async()=>work({events,records,stored,send:async message=>{const response=await persistentCoachHandler(request(message));return {status:response.status,body:await response.json()};},classify:value=>{classification=value;},active:value=>{active=value;}}));
@@ -86,4 +86,26 @@ test('expired and rejected previews never regenerate or save from a bare accepta
 });
 test('an ambiguous continuation without an outstanding task asks a focused question',async()=>{
  await harness({...profileSchema.emptyProfile(),equipment:['dumbbells'],trainingDays:2},async({send,events})=>{const response=await send('go on');assert.match(response.body.message,/what would you like me to continue/i);assert.equal(events.generated,0);});
+});
+
+test('plain greetings cannot trigger proposals even when the semantic action is incorrectly classified',async()=>{
+ await harness({...profileSchema.emptyProfile(),equipment:['dumbbells'],trainingDays:4},async({send,events,classify})=>{
+ classify(intent('training_plan'));
+ for(const message of ['Hello Kivo','How are you?','Thanks','Good morning','See you later']){const result=await send(message);assert.equal(result.status,200);assert.equal(result.body.kind,undefined);assert.equal(result.body.category,'greeting');assert.deepEqual(result.body.exerciseIds,[]);}
+ assert.equal(events.generated,0);assert.equal(events.published,0);assert.equal(events.admitted,5);assert.equal(events.released,5);const explicit=await send('Build me a four-day workout');assert.equal(explicit.body.kind,'proposal');assert.equal(events.generated,1);assert.equal(events.published,0);
+ });
+});
+test('a greeting-prefixed clarification still continues the pending plan and an intervening hello does not erase it',async()=>{
+ await harness({...profileSchema.emptyProfile(),equipment:['dumbbells']},async({send,events})=>{
+ assert.match((await send('Build me a workout plan')).body.message,/how many days/i);
+ assert.equal((await send('Hi Kivo')).body.category,'greeting');
+ const result=await send("Hey, I'm back. I can train three days a week.");assert.equal(result.body.kind,'proposal');assert.equal(events.generated,1);assert.equal(events.contexts[0].conversationPreferences.trainingDays,3);assert.equal(events.published,0);
+ });
+});
+test('social acknowledgement preserves offer acceptance and an unconfirmed preview for explicit review',async()=>{
+ await harness({...profileSchema.emptyProfile(),equipment:['dumbbells'],trainingDays:4},async({send,events,classify})=>{
+ await send('How can I build muscle?');await send('Thanks');const proposal=await send('go on');assert.equal(proposal.body.kind,'proposal');assert.equal(events.generated,1);
+ await send('Hello Kivo');const review=await send('go on');assert.equal(review.body.proposal.id,proposal.body.proposal.id);assert.equal(review.body.proposal.status,'pending');assert.equal(events.generated,1);assert.equal(events.published,0);
+ classify(intent('nutrition_plan',{nutritionRequested:true}));const meal=await send('Plan my meals');assert.equal(meal.body.proposal.payload.scope,'nutrition_only');assert.equal(events.generated,2);
+ });
 });

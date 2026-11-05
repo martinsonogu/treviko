@@ -13,6 +13,11 @@ export function preflightScope(input: CoachInput): ScopeDecision | null {
   if (detectInjection(untrusted)) return { category:'unrelated', outcome: 'unrelated', topic: 'other', safety: 'none', injection: true, needsExercises: false, muscles: [] };
   return null;
 }
+// Complete social turns only: a greeting prefix never hides a task, safety disclosure or request.
+export function isConversationalGreeting(message:string){
+ const text=message.toLowerCase().replaceAll('’',"'").replace(/[!?.,]+/g,' ').replace(/\s+/g,' ').trim();
+ return /^(?:(?:hello|hi|hey)(?: there)?(?: kivo)?|good (?:morning|afternoon|evening)(?: kivo)?)(?: (?:how are you(?: doing)?(?: today)?|how's it going))?$/.test(text)||/^(?:how are you(?: doing)?(?: today)?|how's it going|thanks(?: kivo)?|thank you(?: kivo)?|see you later(?: kivo)?|bye(?: kivo)?|goodbye(?: kivo)?)$/.test(text);
+}
 // Complete, narrowly defined conversational utterances are not unrelated tasks.
 // Complex requests still require semantic classification; a greeting prefix never admits code/homework.
 export function conversationalScope(input: CoachInput): ScopeDecision | null {
@@ -21,7 +26,7 @@ export function conversationalScope(input: CoachInput): ScopeDecision | null {
   const context=buildConversationContext(input);
   const topic:ScopeDecision['topic']=/\b(?:food|meal|meals|nutrition|vegetarian|vegan|breakfast|dinner|protein)\b/i.test(history)&&!/\b(?:train|training|muscle|strength|workout)\b/i.test(history)?'nutrition':'fitness';
   const make=(category:ScopeDecision['category'],needsExercises=false):ScopeDecision=>({category,outcome:'allowed',topic,safety:'none',injection:false,needsExercises,muscles:[]});
-  if(/^(?:(?:hello|hi|hey)(?: there)?|good (?:morning|afternoon|evening))(?: (?:how are you(?: doing)?(?: today)?|how's it going))?$/.test(text))return make('greeting');
+  if(isConversationalGreeting(input.message))return {...make('greeting'),topic:'fitness'};
   if(/^(?:how can i (?:start|get started)|where do i start|how can you help(?: me)?|what can you (?:do|help me with))$/.test(text))return make('coaching_followup');
   if(/^what trainings? can i start with$/.test(text))return {...make('fitness',true),topic:'fitness'};
   if(/^(?:i(?:'m| am)|my (?:experience|level)(?: is)?) (?:an? )?(?:beginner|intermediate|advanced)$/.test(text))return {...make('fitness_profile'),topic:'fitness'};
@@ -49,7 +54,7 @@ Categories:
 fitness: workouts, strength, muscle growth, technique, equipment, training schedules, recovery and exercise science. "What training can I start with?" is fitness even without a muscle name.
 nutrition: general food, meals, substitutions, budgets, dietary preferences, sports nutrition and safe supplement education.
 fitness_profile: relevant self-disclosures such as "I'm intermediate", goals, equipment or "I weigh 85 kg and I'm 179 cm". Accept these as useful coaching information, not ambiguous/off-topic fragments.
-greeting: hello, introductions and polite small talk that opens or maintains a coaching conversation. "Hello, how are you doing today?" is greeting, NEVER an unrelated coding/academic request.
+greeting: standalone "Hello Kivo", "How are you?", "Thanks", "Thank you" and "See you later", introductions and polite small talk that opens or maintains a coaching conversation. "Hello, how are you doing today?" is greeting, NEVER an unrelated coding/academic request.
 coaching_followup: "How can I start?", "How can you help me?", "What next?", and short replies answering the coach's question. Use the recent goal, experience, equipment, meal or schedule discussion. Capability questions are in scope even in a new chat. A bare day count after asking training availability is a follow-up, not an unrelated number.
 ambiguous: genuinely insufficient information after considering history AND explicit preferences. This is a last resort, not the default for short messages or missing fitness keywords.
 unrelated: genuinely unrelated deliverables (Python code, programming assignments, maths homework, essays, unrelated creative writing). A greeting or fitness mention does NOT make a mixed request for code/homework allowed. However school gym routines, interpreting food-label codes and relevant exercise science remain allowed.
