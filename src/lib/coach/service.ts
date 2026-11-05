@@ -41,7 +41,7 @@ export async function runCoach(input: CoachInput, config: CoachConfig, providerF
     const classifierProfile=Object.fromEntries(Object.entries({goals:providedPreferences.goals,experience:providedPreferences.experience}).filter(([,value])=>value!==undefined));
     const classified = validateScope(await withinDeadline(() => provider.classify({...input,profile:classifierProfile}, signal), signal));
     // Recover well-defined conversation intents only after semantic safety/injection checks.
-    const scope = classified.safety!=='none'||classified.injection ? classified : conversationalScope(input) ?? classified;
+    const scope = classified.safety!=='none'||classified.injection||classified.outcome==='unrelated'&&Boolean(input.workoutEvidence) ? classified : input.workoutEvidence?{...classified,category:'fitness' as const,topic:'fitness' as const,outcome:'allowed' as const,needsExercises:false,muscles:[]}:conversationalScope(input) ?? classified;
     const policy = policyResponse(scope); if (policy) return policy;
     input = {...input,providedPreferences:projectCoachProfile(providedPreferences,scope.topic),profile:projectCoachProfile(effectivePreferences(providedPreferences,conversation),scope.topic),conversationContext:projectConversationContext(conversation,scope.topic)};
     const retrieved = retrieveExercises(input, scope);

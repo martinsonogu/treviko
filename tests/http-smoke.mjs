@@ -4,12 +4,12 @@ const base='http://localhost:3100';
 for(const path of ['/','/training','/training/exercises/dumbbell-shrug','/api/v1/health','/api/v1/exercises?muscle=Traps','/api/v1/exercises/dumbbell-shrug','/login','/signup','/forgot-password']){
  const response=await fetch(base+path);assert.equal(response.status,200,path);console.log(`200 ${path}`);
 }
-for(const path of ['/progress','/coach','/nutrition','/profile','/onboarding','/settings']){
+for(const path of ['/progress','/coach','/nutrition','/profile','/onboarding','/settings','/training/history','/training/workouts/88888888-8888-4888-8888-888888888888','/training/workouts/88888888-8888-4888-8888-888888888888/completed']){
  const response=await fetch(base+path,{redirect:'manual'});const html=await response.text();
  assert.ok((response.status>=300&&response.status<400)||(/NEXT_REDIRECT|\/login/.test(html)),`${path} requires account access`);console.log(`Protected ${path}`);
 }
 const missing=await fetch(base+'/api/v1/exercises/not-in-library');assert.equal(missing.status,404);
-for(const path of ['/api/v1/profile','/api/v1/foods','/api/v1/meal-plans','/api/v1/coach/conversations','/api/v1/coach/status','/api/v1/coaching/plan','/api/v1/coaching/today']){
+for(const path of ['/api/v1/profile','/api/v1/foods','/api/v1/meal-plans','/api/v1/coach/conversations','/api/v1/coach/status','/api/v1/coaching/plan','/api/v1/coaching/today','/api/v1/workouts','/api/v1/workouts/88888888-8888-4888-8888-888888888888','/api/v1/workouts/88888888-8888-4888-8888-888888888888/feedback']){
  const response=await fetch(base+path);assert.ok([401,503].includes(response.status),path);assert.equal(response.headers.get('cache-control'),'private, no-store');
 }
 const invalid=await fetch(base+'/api/v1/coach/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:'{'});assert.ok([401,503].includes(invalid.status));
@@ -41,3 +41,8 @@ console.log('Passed manifest, supplied logo, installation icons, theme colour, s
 const ownedPreview=await fetch(base+'/api/v1/coaching/plan/proposals/44444444-4444-4444-8444-444444444444');assert.ok([401,503].includes(ownedPreview.status));assert.equal(ownedPreview.headers.get('cache-control'),'private, no-store');
 const unified=await fetch(base+'/api/v1/coach/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Create my training plan.',conversationId:'33333333-3333-4333-8333-333333333333',conversationFirst:true})});assert.ok([401,503].includes(unified.status));
 console.log('Passed authenticated inline-proposal retrieval and unified message boundaries.');
+
+for(const [path,method] of [['/api/v1/workouts','POST'],['/api/v1/workouts/88888888-8888-4888-8888-888888888888','PATCH']]){const response=await fetch(base+path,{method,headers:{'Content-Type':'application/json'},body:'{}'});assert.ok([401,503].includes(response.status));assert.equal(response.headers.get('cache-control'),'private, no-store');}
+console.log('Passed private workout pages, read APIs and mutation authentication boundaries. No workout writes.');
+
+{const response=await fetch(base+'/api/v1/workouts/88888888-8888-4888-8888-888888888888/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"effort":"easy"}'});assert.ok([401,503].includes(response.status));}

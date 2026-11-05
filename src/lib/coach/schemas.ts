@@ -1,3 +1,4 @@
+import type {WorkoutEvidence} from './workout-evidence';
 import type {ConversationContext} from './context';
 import { z } from 'zod';
 import { equipmentOptions, experienceLevels, muscleGroups } from '../training/types';
@@ -20,7 +21,7 @@ export const coachRequestSchema = z.object({
   history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().trim().min(1).max(4000) }).strict()).max(10).default([]),
   profile: profileSchema.default({}),
 }).strict().refine(input => input.message.length + input.history.reduce((sum, entry) => sum + entry.content.length, 0) <= 12000, 'Conversation context is too long');
-export type CoachInput = z.infer<typeof coachRequestSchema> & {savedPlanContext?:{trainingGoal?:string|null;nutritionGoal?:string|null;goal?:string;scope?:string;version:number;training:{weekday:number;name:string;exerciseIds:string[]}[];meals:{slot:number;name:string}[];sessionMinutes:number}|null;conversationContext?:ConversationContext;providedPreferences?:CoachProfile;exerciseContext?:{availability:string;guidance:string|null}};
+export type CoachInput = z.infer<typeof coachRequestSchema> & {workoutEvidence?:WorkoutEvidence;savedPlanContext?:{trainingGoal?:string|null;nutritionGoal?:string|null;goal?:string;scope?:string;version:number;training:{weekday:number;name:string;exerciseIds:string[]}[];meals:{slot:number;name:string}[];sessionMinutes:number}|null;conversationContext?:ConversationContext;providedPreferences?:CoachProfile;exerciseContext?:{availability:string;guidance:string|null}};
 export type CoachProfile = z.infer<typeof profileSchema>;
 
 export const safetyKinds = ['none', 'emergency', 'injury', 'medical', 'eating_disorder', 'dangerous', 'supplements', 'minor'] as const;

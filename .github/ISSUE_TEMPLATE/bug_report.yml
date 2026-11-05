@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a reproducible problem using sanitised development data.
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities, follow SECURITY.md instead. Never include keys, environment files, real profiles, conversations or workout exports."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Use local test data. Include route and minimal steps.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit, browser, OS and viewport
+      placeholder: "Commit hash; browser version; 390px mobile emulation"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitised evidence and checks
+      description: State mocked versus live testing. Remove identifying data from screenshots/logs.

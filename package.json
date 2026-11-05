@@ -13,7 +13,12 @@
     "nutrition:import": "node scripts/import-nutrition.mjs",
     "test:integration": "node --env-file=.env.local --test tests/supabase.integration.test.mjs",
     "test:navigation": "node scripts/check-navigation-browser.mjs",
-    "test:typing": "node scripts/check-typing-browser.mjs"
+    "test:typing": "node scripts/check-typing-browser.mjs",
+    "test:workouts": "node scripts/check-workouts-browser.mjs",
+    "prepare": "node .husky/install.mjs",
+    "lint:staged": "lint-staged",
+    "format": "prettier --write",
+    "format:check": "prettier --check"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -33,6 +38,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.0",
+    "prettier": "3.9.10",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

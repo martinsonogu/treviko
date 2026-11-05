@@ -1,0 +1,2 @@
+export function formatWorkoutDate(value:string,timeZone:string){const date=new Date(value);if(!Number.isFinite(date.getTime()))return 'Date unavailable';return new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone,timeZoneName:undefined}).format(date);}
+export function workoutDayKey(value:string,timeZone:string){const date=new Date(value);if(!Number.isFinite(date.getTime()))return null;return new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date);}
