@@ -219,7 +219,7 @@ const library: Exercise[] = [
       "Upper back"
     ],
     "requiredEquipment": [
-      "cable-machine"
+      "lat-pulldown-machine"
     ],
     "difficulty": "beginner",
     "targetRegion": null,
@@ -238,7 +238,7 @@ const library: Exercise[] = [
       "Keep the surrounding area clear and check equipment stability."
     ],
     "setup": [
-      "Prepare and check: cable-machine.",
+      "Prepare and check a dedicated lat-pulldown station with a suitable bar and secure thigh restraint.",
       "Use a stable surface and adjust equipment to your height before starting.",
       "Read the machine instructions and fully insert the weight-stack pin before starting."
     ],

@@ -14,7 +14,7 @@ const normalize = (text: string) => text.toLowerCase().replaceAll('’', "'").re
 const days: Record<string, number> = { one:1,two:2,three:3,four:4,five:5,six:6,seven:7 };
 const equipmentNames: Record<Equipment, string> = {
   dumbbells:'dumbbells?', bench:'(?:an? )?(?:incline )?bench', 'resistance-band':'(?:resistance )?bands?',
-  'pull-up-bar':'pull[- ]?up bar', 'cable-machine':'cable machine', 'chest-press-machine':'chest press machine',
+  'pull-up-bar':'pull[- ]?up bar', 'cable-machine':'cable machine', 'lat-pulldown-machine':'lat pulldown (?:machine|station)', 'chest-press-machine':'chest press machine',
   'leg-extension-machine':'leg extension machine', 'leg-curl-machine':'leg curl machine',
 };
 

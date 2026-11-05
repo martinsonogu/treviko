@@ -23,4 +23,4 @@ export async function proxy(request: NextRequest) {
   response.headers.set('Cache-Control', 'private, no-store');
   return response;
 }
-export const config = { matcher: ['/', '/training', '/coach/:path*', '/profile/:path*', '/settings/:path*', '/onboarding/:path*', '/nutrition/:path*', '/login', '/signup', '/forgot-password', '/reset-password', '/auth/:path*', '/api/v1/:path*'] };
+export const config = { matcher: ['/', '/training/:path*', '/progress', '/coach/:path*', '/profile/:path*', '/settings/:path*', '/onboarding/:path*', '/nutrition/:path*', '/login', '/signup', '/forgot-password', '/reset-password', '/auth/:path*', '/api/v1/:path*'] };

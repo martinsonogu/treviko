@@ -27,7 +27,7 @@ export async function persistentCoachHandler(request:Request) {
   // Session-only overrides cannot erase saved safety disclosures/allergies.
   const profile={...stored,...body.profile,goals:[...new Set([stored.goals,body.profile?.goals].filter(Boolean))].join('; ').slice(0,500)||undefined,allergies:[...new Set([stored.allergies,body.profile?.allergies].filter(Boolean))].join('; ').slice(0,500)||undefined};
   const history=buildCoachHistory(conversation.messages,body.message);
-  const input={...coachRequestSchema.parse({message:body.message,profile,history}),savedPlanContext:activePlan?{version:activePlan.version,training:activePlan.payload.days.map(d=>({weekday:d.weekday,name:d.name,exerciseIds:d.exercises.map(e=>e.exerciseId)})),meals:activePlan.payload.meals.map(m=>({slot:m.slot,name:m.name})),sessionMinutes:activePlan.payload.sessionMinutes}:null};
+  const input={...coachRequestSchema.parse({message:body.message,profile,history}),savedPlanContext:activePlan?{version:activePlan.version,goal:activePlan.payload.primaryGoal,trainingGoal:activePlan.payload.trainingGoal,nutritionGoal:activePlan.payload.nutritionGoal,scope:activePlan.payload.scope,training:activePlan.payload.days.map(d=>({weekday:d.weekday,name:d.name,exerciseIds:d.exercises.map(e=>e.exerciseId)})),meals:activePlan.payload.meals.map(m=>({slot:m.slot,name:m.name})),sessionMinutes:activePlan.payload.sessionMinutes}:null};
   const monitor=persistentUsageMonitor(context.userId,config);
   const result=await runCoach(input,config,()=>createOpenAIProvider(config,monitor),AbortSignal.any([request.signal,AbortSignal.timeout(config.requestTimeoutMs)]));
   if(result.httpStatus===200){

@@ -6,7 +6,7 @@ const A='11111111-1111-4111-8111-111111111111', B='22222222-2222-4222-8222-22222
 async function database() {
  const db=new PGlite();
  await db.exec(`create role anon; create role authenticated; create role service_role bypassrls; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; grant usage on schema auth to authenticated,anon,service_role; grant execute on function auth.uid() to authenticated,anon,service_role;`);
- for(const migration of ['202611040001_milestone4.sql','202611040002_shared_ai_controls.sql','202611050001_coaching_plans.sql']) await db.exec(await readFile(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
+ for(const migration of ['202611040001_milestone4.sql','202611040002_shared_ai_controls.sql','202611050001_coaching_plans.sql','202611050002_training_first.sql']) await db.exec(await readFile(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8'));
  await db.exec(`insert into auth.users(id) values('${A}'),('${B}');`);
  return db;
 }
@@ -118,5 +118,36 @@ test('coaching plans require confirmed owned proposals, protect concurrent revis
   await asUser(db,A);assert.equal((await db.query('select version from public.coaching_plans')).rows[0].version,2);
   await db.exec('reset role');await db.query('delete from auth.users where id=$1',[A]);
   assert.equal((await db.query('select id from public.coaching_plans where id=$1',[plan])).rows.length,0);
+ }finally{await db.close();}
+});
+
+test('partial plan confirmations preserve the other component atomically, including first nutrition-only plans',async()=>{
+ const db=await database();
+ const base={primaryGoal:'muscle_gain',experience:'intermediate',equipment:['dumbbells'],sessionMinutes:30,rationale:'A starting option.',assumptions:[],scope:'training_and_nutrition',days:[{weekday:1,name:'Original workout',exercises:[{exerciseId:'shrug',sets:3,reps:'10–15',unit:'reps'}]}],meals:[{slot:1,name:'Lentil dinner',guidance:'Review labels.',recipeId:'partial-recipe'}]};
+ try{
+  await db.exec("insert into public.recipes(id,name,cuisine,servings,preparation_minutes,instructions,published) values('partial-recipe','Lentil dinner','test',1,5,'{test}',true);set role service_role;");
+  const insert=async(user,version,payload)=>(await db.query('insert into public.plan_proposals(user_id,base_version,payload,profile_guard,preference_fingerprint) values($1,$2,$3,public.coaching_profile_guard($1),$4) returning id',[user,version,JSON.stringify(payload),'guard-'+version])).rows[0].id;
+  const confirm=async(user,id)=>(await db.query('select public.confirm_coaching_proposal($1,$2,true) as id',[user,id])).rows[0].id;
+  const id=await confirm(A,await insert(A,0,base));
+  const read=async(table,condition='plan_id')=>(await db.query(`select * from public.${table} where ${condition}=$1`,[id])).rows;
+  const nutrition=await read('nutrition_plan_references'),ideas=await read('coaching_meal_ideas');const mealId=nutrition[0].meal_plan_id;
+  const mealItems=(await db.query('select * from public.meal_plan_items where plan_id=$1',[mealId])).rows;
+  const training={...base,scope:'training_only',primaryGoal:'strength',meals:[],days:[{...base.days[0],weekday:3,name:'Updated training'}]};
+  await confirm(A,await insert(A,1,training));
+  assert.deepEqual(await read('nutrition_plan_references'),nutrition);assert.deepEqual(await read('coaching_meal_ideas'),ideas);assert.deepEqual((await db.query('select * from public.meal_plan_items where plan_id=$1',[mealId])).rows,mealItems);
+  const days=await read('training_plan_days');const movements=(await db.query('select * from public.training_plan_exercises where user_id=$1',[A])).rows;
+  const header=(await db.query('select experience,equipment,training_days,session_minutes,training_preference_fingerprint from public.coaching_plans where id=$1',[id])).rows[0];
+  const stale=await insert(A,2,training);
+  const foodOnly={...base,scope:'nutrition_only',primaryGoal:'strength',days:[],meals:[{...base.meals[0],guidance:'Updated meals supporting strength and recovery.'}]};
+  await confirm(A,await insert(A,2,foodOnly));
+  assert.deepEqual(await read('training_plan_days'),days);assert.deepEqual((await db.query('select * from public.training_plan_exercises where user_id=$1',[A])).rows,movements);assert.deepEqual((await db.query('select experience,equipment,training_days,session_minutes,training_preference_fingerprint from public.coaching_plans where id=$1',[id])).rows[0],header);
+  const snapshot=(await db.query('select snapshot from public.plan_revisions where plan_id=$1 and version=3',[id])).rows[0].snapshot;assert.equal(snapshot.days[0].name,'Updated training');assert.equal(snapshot.meals[0].guidance,foodOnly.meals[0].guidance);assert.equal(snapshot.primaryGoal,'strength');assert.equal(snapshot.scope,'training_and_nutrition');
+  await assert.rejects(confirm(A,stale),/VERSION_CONFLICT/);
+  const nutritionFirst=await confirm(B,await insert(B,0,foodOnly));assert.equal((await db.query('select training_days from public.coaching_plans where id=$1',[nutritionFirst])).rows[0].training_days,0);assert.equal((await db.query('select * from public.training_plan_days where plan_id=$1',[nutritionFirst])).rows.length,0);
+  const ownMeals=(await db.query('select * from public.coaching_meal_ideas where plan_id=$1',[nutritionFirst])).rows;
+  await confirm(B,await insert(B,1,training));assert.deepEqual((await db.query('select * from public.coaching_meal_ideas where plan_id=$1',[nutritionFirst])).rows,ownMeals);
+  const forbidden=await insert(A,3,training);await assert.rejects(confirm(B,forbidden),/NOT_FOUND/);
+  const before=(await db.query('select goals from public.user_fitness_preferences where user_id=$1',[A])).rows[0].goals;assert.deepEqual(before,[],'plan goals do not overwrite profile preferences');
+  await asUser(db,A);assert.equal((await db.query('select * from public.coaching_plans where user_id=$1',[B])).rows.length,0);
  }finally{await db.close();}
 });

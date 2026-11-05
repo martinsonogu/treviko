@@ -1,37 +1,39 @@
 # Treviko
 
-Mobile-first fitness and nutrition companion built in the existing Next.js App Router repository. Milestones 1–3 remain available: 48 typed exercises, 12 muscle groups, deterministic targeting, compatible equipment filtering, accessible exercise-detail tabs, and server-side OpenAI coaching with scope/safety checks.
+Mobile-first AI personal trainer with integrated, optional nutrition coaching, built in the existing Next.js App Router repository. Milestones 1–3 remain available: 48 typed exercises, 12 muscle groups, deterministic targeting, compatible equipment filtering, accessible exercise-detail tabs, and server-side OpenAI coaching with scope/safety checks.
 
 Milestone 4 adds Supabase-backed accounts, onboarding, private preferences, saved conversations, source-backed nutrition utilities, meal plans, account deletion and database-shared AI controls. **Supabase must be configured and the migrations applied before account features work.** Missing configuration produces a setup message or protected-route redirect; it never simulates a successful login or database save. Public Training and Progress still work without Supabase.
 
 
-## AI-first coaching experience
+## Training-first coaching experience
 
-Home, Training, Nutrition and Coach now share one confirmed coaching plan. Home shows the workout scheduled in your saved timezone, a daily meal template and honest progress/empty states. Training keeps all 48 exercises and Target a Muscle beneath your saved workout week. Nutrition prioritises meal planning, substitutions, source-linked recipes and a one-day ingredient shopping list; the existing source explorer and saved meal plans remain available.
+Home, Training, Nutrition and Coach read the same confirmed coaching record, with independently editable training and nutrition components. Workout and vague personal-plan requests default to **training only**. Meals are generated only for an explicit nutrition request or a combined selection. The Coach workspace offers Training only, Nutrition only, Training and nutrition, or automatic intent. Saved dietary preferences alone never opt users into meal planning.
 
-**Required setup:** apply only the new additive migration `supabase/migrations/202611050001_coaching_plans.sql` once, after the two existing migrations. If you applied those manually in SQL Editor, run only this new file there; do not re-run the first two. If CLI migration history already tracks them, use `supabase db push`. No new environment variables or credentials are required. Existing OpenAI, Supabase and nutrition settings are preserved. Do not reset a hosted database.
+**Required setup:** apply the additive migration `supabase/migrations/202611050002_training_first.sql` once after the three existing migrations. With the existing migrations correctly tracked, run `supabase db push --dry-run`, check that only this file is pending, then `supabase db push`. For SQL Editor installations run only the new file as a transaction. No data reset or new credentials are needed. It adds prescription/timing columns, permits a nutrition-first record without workouts, and replaces the service-only confirmation transaction to preserve untouched components. Existing snapshots remain readable. A generic cable machine no longer implies a dedicated lat-pulldown station; confirm the new equipment option in Profile only if actually available.
 
-On Home choose **Create my plan**, then describe your needs in Coach's **Create or adjust my shared plan** workspace. You can use saved preferences, request adjustments, review a complete training-and-meals preview, reject it or explicitly **Confirm & save this plan**. In ordinary chat, **Use this message to propose a plan change** passes your message and owned conversation into the same workflow. General chat receives the active plan as context but cannot save changes. Free-text “yes” is not a database confirmation: use the confirmation button attached to the exact preview.
+On Home choose **Create my training plan**. Describe your needs in Coach, review the schedule, complete prescriptions, computed duration estimates, warm-up, effort guidance, progression and compatible alternatives, then explicitly **Confirm & save**. Nutrition can be added later, without replacing workouts. A training-only confirmation preserves existing meal references; a nutrition-only confirmation preserves existing workout rows. Global version checks still reject stale tabs, and preference changes invalidate a preview. Model text never writes to the database directly. Ordinary chat can pass a message and owned history into this same preview workflow.
 
-Proposals are structured and independently reviewed through the existing OpenAI provider, with shared admission, token/cost budgets and bounded requests. The server checks exact library IDs, equipment, experience, library set/rep prescriptions, recipes, dietary/allergen restrictions, ownership and version. Preferences changing during generation/review invalidate confirmation. A newer confirmed revision prevents stale-tab overwrites. Reads never generate AI. General chat does not silently change saved profiles or plans. Existing identical owned daily meal plans are reused.
+Session availability is a ceiling, not an invented workout duration. The server estimates time from warm-up, working sets, conservative repetition/hold duration, rest and transitions, rounding up to five-minute bands. Confirmed exercise IDs/equipment, complete prescriptions, useful volume, movement coverage, recovery and progression are checked deterministically. At most one metered repair is allowed; failed validation/review leaves the saved plan intact. Saved-profile and requested goals are displayed separately; editing the profile goal is a separate explicit action. Technical version IDs remain internal.
 
-Source coverage is limited. The coach can propose qualitative meals when no suitable source recipe exists; **their numerical nutrition is unavailable**, not estimated by the model. Daily totals are unknown when any meal lacks a component nutrient. The shopping list covers only linked recipe ingredients, not every qualitative idea. Development snapshots and authored recipe examples remain labelled. Prices, budget fit, certified allergen safety and complete nutritional adequacy are not verified. Meals form a repeated daily template; varied weekly meal generation is not implemented. Workout logging and analytics remain out of scope.
+Source coverage is limited. When nutrition is requested, matching recipes retain deterministic nutrient calculations and provenance; otherwise meals are qualitative with numerical nutrition unavailable. The daily template can include varied meal slots but repeats across days. Shopping quantities cover known recipe ingredients only. There is no fabricated calorie target, complete nutrition-adequacy guarantee, live pricing or guaranteed allergy safety. Training-only proposals show no meal or shopping section. Existing food tools and saved meal plans remain available.
 
-New private endpoints:
-
-| Endpoint | Behaviour |
+| Private endpoint | Behaviour |
 | --- | --- |
-| `GET /api/v1/coaching/plan` | Current confirmed plan and latest applicable pending preview. |
-| `POST /api/v1/coaching/plan/proposals` | Generate a preview from `{message, conversationId?}`; also handles revisions. |
-| `POST /api/v1/coaching/plan/confirm` | Publish exactly `{proposalId, confirm:true}` after revalidation. |
-| `POST /api/v1/coaching/plan/cancel` | Reject an owned pending proposal. |
-| `GET /api/v1/coaching/today` | Shared daily workout, meal calculations, source information and shopping projection. |
+| `GET /api/v1/coaching/plan` | Confirmed components and the applicable pending preview. |
+| `POST /api/v1/coaching/plan/proposals` | `{message, conversationId?, scope?, goal?}`. Scope is `training_only`, `nutrition_only` or `training_and_nutrition`; omitted scope uses semantic request intent with training as the conservative default. |
+| `POST /api/v1/coaching/plan/confirm` | `{proposalId, confirm:true}`; atomically replaces only the requested component(s). |
+| `POST /api/v1/coaching/plan/cancel` | Reject an owned pending preview. |
+| `GET /api/v1/coaching/today` | Server-authoritative daily training and optional nutrition projection. |
 
-All endpoints require verified authentication, owner-scoped database access and private/no-store responses. Browser mutations retain origin checks. Only server-privileged code writes proposals/plans. Plan publication is transactional; relational workouts and meal references plus immutable revision history cascade on account deletion.
+Verified authentication, RLS, server validation, origin checks, private/no-store responses, expiration, usage budgets, safety checks, confirmation and account-deletion cascades remain. Optional `PLAN_MIN_SESSION_SETS`, `PLAN_MAX_SESSION_SETS`, `PLAN_MAX_WEEKLY_MUSCLE_SETS` and `PLAN_PATTERN_EXPOSURES` configure conservative programming guards; defaults are documented in `.env.example`. They are quality guardrails, not universal physiological requirements. Existing `.env.local` values are preserved.
 
-See [implementation, changed files and manual acceptance steps](docs/ai-first-plan.md). Automated SQL/API tests use actual migrations and mocked AI/Auth boundaries. They verify local proposal/confirmation/revision, linked nutrition, shared views and restored reads, **not hosted Supabase Auth, live model quality or a full browser end-to-end journey**. No paid AI request or hosted migration is run by the test suite.
+See [the training-first report](docs/training-first-refinement.md) for changed files, deterministic rules, illustrative outputs, limitations and exact manual steps. The prior [architecture](docs/ai-first-plan.md) and [generation-failure investigation](docs/plan-generation-fix.md) describe earlier stages. Automated tests mock paid AI and execute real SQL locally; hosted migration application, actual model quality for the new scope contract and the complete authenticated browser journey require manual verification. No workout logging or analytics were added.
 
-Plan generation now constrains model output to exact allowed IDs/options, performs at most one metered repair for an invalid or truncated draft, and returns stage-specific safe errors. Authentication, safety review, nutrition calculations and explicit confirmation remain required. See [the failure investigation and manual verification steps](docs/plan-generation-fix.md) for confirmed findings, diagnostic categories and live-test limits.
+## Public and account experience
+
+Public Home and the exercise library remain available without an account. Authentication uses a compact dedicated layout; app navigation is shown only after server-verified sign-in. Signed-in members get desktop top navigation/mobile bottom navigation and Account & sign out. Progress requires sign-in and shows a no-history state without internal milestone labels. Public/auth/private URLs are unchanged; App Router route groups separate their layouts.
+
+Deletion completion uses a short-lived signed HttpOnly cookie issued only after successful account removal; `deleted=true` alone never proves deletion. Browser auth cookies and in-memory credentials are cleared on the completed flow. Login preserves safe return destinations, forms have accessible show/hide controls, and signup/recovery messages remain non-enumerating. No new migration, key or Supabase setting is required for this UI work. See [the report and exact manual verification steps](docs/auth-public-experience.md).
 
 ## Current verification status
 
@@ -67,7 +69,7 @@ Set `APP_ORIGIN` to the application's exact origin, `http://localhost:3000` loca
 ## Hosted Supabase setup
 
 1. Create a dedicated Supabase project. Copy its URL, publishable key and server secret into the **existing** `.env.local`. Keep the OpenAI variables intact.
-2. Install/authenticate the Supabase CLI locally. Link this repository to your project and apply the two additive migrations:
+2. Install/authenticate the Supabase CLI locally. Link this repository to your project and apply the migrations:
 
    ```sh
    supabase login
@@ -75,7 +77,7 @@ Set `APP_ORIGIN` to the application's exact origin, `http://localhost:3000` loca
    supabase db push
    ```
 
-   Migration files are `supabase/migrations/202611040001_milestone4.sql` and `202611040002_shared_ai_controls.sql`. Review them before applying to any project with existing similarly named tables. They do not drop existing data. They create a profile-initialization trigger, backfill existing Auth users, establish RLS and explicitly restrict privileged RPC execution. The CLI tracks applied migrations; do not repeatedly paste them into SQL Editor. Never run a destructive database reset against a hosted project.
+   The original account migrations are `supabase/migrations/202611040001_milestone4.sql` and `202611040002_shared_ai_controls.sql`; coaching adds `202611050001_coaching_plans.sql` and `202611050002_training_first.sql`. A fresh project applies all four in order; an existing project applies only pending migrations. Review them before applying to any project with existing similarly named tables. They do not drop existing data. They create a profile-initialization trigger, backfill existing Auth users, establish RLS and explicitly restrict privileged RPC execution. The CLI tracks applied migrations; do not repeatedly paste them into SQL Editor. Never run a destructive database reset against a hosted project.
 3. Enable email/password signups, **Confirm Email**, refresh-token rotation and appropriate password policy (the app requires at least 12 characters for new passwords). Disable anonymous Auth signups. Configure your Site URL and allow the exact `/auth/confirm`, `/auth/confirm?next=/reset-password`, and `/reset-password` URLs under your app origin. Do not use a broad wildcard for production redirects.
 4. Configure confirmation and recovery email templates using the supplied HTML in `supabase/templates/`. Confirmation uses `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup`; recovery uses the same path with `type=recovery`. The route verifies the token server-side and permits only safe internal redirects. PKCE code callbacks are also supported.
 5. Configure production SMTP and review Supabase's Auth rate limits and bot protection. Default hosted mail delivery is limited and must not be assumed to be production-ready.

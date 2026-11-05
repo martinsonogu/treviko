@@ -10,7 +10,7 @@ export function safeNext(value: string | null | undefined, fallback = '/profile'
   if(!value||value.length>2000)return fallback;
   let decoded=value;
   try{for(let index=0;index<3;index++){const next=decodeURIComponent(decoded);if(next===decoded)break;decoded=next;}}catch{return fallback;}
-  if(!/^\/(?!\/)/.test(decoded)||/[\\\r\n]/.test(decoded)||decoded.startsWith('/auth/'))return fallback;
+  if(!/^\/(?!\/)/.test(decoded)||/[\\\r\n]/.test(decoded)||decoded.startsWith('/auth/')||['/login','/signup','/forgot-password','/reset-password'].includes(decoded.split(/[?#]/)[0].replace(/\/$/,'')))return fallback;
   const url=new URL(decoded,'https://treviko.invalid');
   return url.origin==='https://treviko.invalid'?value:fallback;
 }

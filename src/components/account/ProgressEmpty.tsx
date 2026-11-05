@@ -1,0 +1,2 @@
+import Link from 'next/link';
+export default function ProgressEmpty(){return <div className="stack"><header><p className="eyebrow">YOUR PROGRESS</p><h1>Your effort has a story.</h1><p className="muted">A place for the work you put in.</p></header><section className="card cardbody stack"><h2>No workout history yet</h2><p>Progress will appear here after workouts can be logged. Workout logging isn’t available yet, so there are no completed sessions or statistics to show.</p><Link className="button" href="/training">View my training →</Link></section></div>;}

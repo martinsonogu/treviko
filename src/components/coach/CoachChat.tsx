@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { CoachPayload } from '@/lib/coach/format';
 import type { CoachProfile } from '@/lib/coach/schemas';
 import CoachLoadingStatus from './CoachLoadingStatus';
+import {planScopes,type PlanScope} from '@/lib/coaching/scope';
 import PlanWorkspace from '@/components/coaching/PlanWorkspace';
 import CoachPreferences from '@/components/coach/CoachPreferences';
 import {conversationIdFromSearch,conversationLocation,savedChatEntries,replyMatchesConversation,type ChatEntry,type SavedChat} from './conversation-state';
@@ -17,6 +18,7 @@ export default function Coach({initialProfile}:{initialProfile:CoachProfile}) {
   const [message, setMessage] = useState('');
   const [planOpen,setPlanOpen]=useState(false);
   const [planMessage,setPlanMessage]=useState('');
+  const [planScope,setPlanScope]=useState<PlanScope|undefined>();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [profile, setProfile] = useState<CoachProfile>(initialProfile);
   const [conversations,setConversations]=useState<Conversation[]>([]);
@@ -34,7 +36,7 @@ export default function Coach({initialProfile}:{initialProfile:CoachProfile}) {
   useEffect(() => {
     const controller = new AbortController();
     const query=new URLSearchParams(window.location.search);const prompt=query.get('prompt')?.slice(0,2000)??'';
-    queueMicrotask(()=>{if(controller.signal.aborted)return;if(query.get('plan')==='1'){setPlanOpen(true);setPlanMessage(prompt);}else if(prompt)setMessage(prompt);});
+    queueMicrotask(()=>{if(controller.signal.aborted)return;if(query.get('plan')==='1'){setPlanOpen(true);setPlanMessage(prompt);const requested=query.get('scope');setPlanScope(planScopes.includes(requested as PlanScope)?requested as PlanScope:undefined);}else if(prompt)setMessage(prompt);});
     fetch('/api/v1/coach/status', { signal: controller.signal, cache: 'no-store' }).then(async response => {
       const body = await response.json();
       if (!controller.signal.aborted) setAvailability(response.ok?body:{mode:'unavailable',available:false,message:body.error?.message||'Please sign in again to use Coach.',anonymous:false});
@@ -94,7 +96,7 @@ export default function Coach({initialProfile}:{initialProfile:CoachProfile}) {
     <p className="notice" role="status">{availability ? availability.message : 'Checking live AI configuration…'}</p>
     <p className="muted">Conversations are saved to your account after each successful response. A bounded recent history and relevant preferences are sent to OpenAI. <Link className="textbutton" href="/profile">Edit saved preferences →</Link></p>
   </header>
-    <details className="planEntry" open={planOpen} onToggle={event=>setPlanOpen(event.currentTarget.open)}><summary>Create or adjust my shared plan</summary>{planOpen&&<PlanWorkspace key={planMessage} initialMessage={planMessage} conversationId={conversationId}/>}</details>
+    <details className="planEntry" open={planOpen} onToggle={event=>setPlanOpen(event.currentTarget.open)}><summary>Create or adjust my training plan</summary>{planOpen&&<PlanWorkspace key={planMessage} initialMessage={planMessage} initialScope={planScope} conversationId={conversationId}/>}</details>
     <section className="card cardbody stack"><label className="field">Saved conversations<select value={conversationId??''} disabled={busy||restoring} onChange={event=>{if(event.target.value)void openConversation(event.target.value);else reset();}}><option value="">New conversation</option>{conversations.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}</select></label>{conversationId&&<><label className="field">Conversation title<input maxLength={100} value={title} onChange={event=>setTitle(event.target.value)}/></label><div className="chips"><button className="chip" disabled={busy} onClick={()=>{void openConversation(conversationId);}}>Reload saved chat</button><button className="chip" disabled={busy||!title.trim()} onClick={()=>{void manageConversation();}}>Rename</button><button className="chip" disabled={busy} onClick={()=>{void manageConversation(true);}}>Delete saved conversation</button></div></>}</section>
     <CoachPreferences profile={profile} onChange={setProfile} saved />
     <div className="sectionheading"><h2>Your conversation</h2><button className="textbutton" type="button" onClick={reset}>Start fresh conversation</button></div>
@@ -108,7 +110,7 @@ export default function Coach({initialProfile}:{initialProfile:CoachProfile}) {
     {!entries.length && <div className="chips" aria-label="Suggested prompts">{suggestions.map(prompt => <button className="chip promptChip" type="button" key={prompt} onClick={() => { setMessage(prompt); inputRef.current?.focus(); }}>{prompt}</button>)}</div>}
     {error && <p role="alert" className="notice">{error}</p>}
     <form onSubmit={send} className="chatForm coachForm"><label className="field">Message your coach<textarea ref={inputRef} rows={3} value={message} maxLength={2000} onChange={event => setMessage(event.target.value)} placeholder="What would you like help with?" aria-describedby="coach-message-limit" /></label><button className="button" disabled={restoring || busy || !message.trim() || !availability?.available} type="submit">{busy ? 'Working…' : 'Send →'}</button></form>
-    <button className="textbutton" type="button" disabled={busy||restoring||!message.trim()} onClick={()=>{setPlanMessage(message);setPlanOpen(true);document.getElementById("plan-workspace")?.scrollIntoView({behavior:"instant"});}}>Use this message to propose a plan change →</button>
+    <button className="textbutton" type="button" disabled={busy||restoring||!message.trim()} onClick={()=>{setPlanMessage(message);setPlanScope(undefined);setPlanOpen(true);document.getElementById("plan-workspace")?.scrollIntoView({behavior:"instant"});}}>Use this message to propose a plan change →</button>
     <small id="coach-message-limit" className="muted">{message.length}/2000 characters. Enter adds a new line; use Send to submit.</small>
     <p className="notice">General fitness and nutrition education, not medical diagnosis or treatment. Use Nutrition for source-backed food values and deterministic serving totals; this chat gives qualitative nutrition guidance. Exercise images remain labelled placeholders. Scope and safety checks can make mistakes.</p>
   </div>;

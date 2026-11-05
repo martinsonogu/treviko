@@ -5,13 +5,13 @@ import {ApiError} from '../api/http';
 import {createAdminSupabase} from '../supabase/admin';
 import {planPayloadSchema,proposalRowSchema,type ActivePlan,type PlanPayload} from './schema';
 export async function getActivePlan(context:AuthContext):Promise<ActivePlan|null>{
- const {data,error}=await context.db.from('coaching_plans').select('id,preference_fingerprint,version,status,created_at,updated_at,nutrition_plan_references(meal_plan_id)').eq('user_id',context.userId).maybeSingle();
+ const {data,error}=await context.db.from('coaching_plans').select('id,preference_fingerprint,training_preference_fingerprint,nutrition_preference_fingerprint,version,status,created_at,updated_at,nutrition_plan_references(meal_plan_id)').eq('user_id',context.userId).maybeSingle();
  if(error)throw new ApiError(503,'PLAN_UNAVAILABLE','Your coaching plan could not load. Apply the coaching-plan migration and retry.');
  if(!data)return null;
  const revision=await context.db.from('plan_revisions').select('snapshot').eq('plan_id',data.id).eq('version',data.version).single();
  if(revision.error)throw new ApiError(503,'PLAN_UNAVAILABLE','Your saved plan revision could not load.');
- const header=z.object({id:z.string().uuid(),preference_fingerprint:z.string(),version:z.number().int().positive(),status:z.enum(['active','paused']),created_at:z.string(),updated_at:z.string(),nutrition_plan_references:z.union([z.array(z.object({meal_plan_id:z.string().uuid().nullable()})),z.object({meal_plan_id:z.string().uuid().nullable()}).nullable()]).transform(value=>Array.isArray(value)?value:value?[value]:[])}).parse(data);
- return {id:header.id,preferenceFingerprint:header.preference_fingerprint,version:header.version,status:header.status,createdAt:header.created_at,updatedAt:header.updated_at,payload:planPayloadSchema.parse(revision.data.snapshot),mealPlanId:header.nutrition_plan_references[0]?.meal_plan_id??null};
+ const header=z.object({id:z.string().uuid(),preference_fingerprint:z.string(),training_preference_fingerprint:z.string().nullable().optional(),nutrition_preference_fingerprint:z.string().nullable().optional(),version:z.number().int().positive(),status:z.enum(['active','paused']),created_at:z.string(),updated_at:z.string(),nutrition_plan_references:z.union([z.array(z.object({meal_plan_id:z.string().uuid().nullable()})),z.object({meal_plan_id:z.string().uuid().nullable()}).nullable()]).transform(value=>Array.isArray(value)?value:value?[value]:[])}).parse(data);
+ return {id:header.id,preferenceFingerprint:header.preference_fingerprint,trainingPreferenceFingerprint:header.training_preference_fingerprint,nutritionPreferenceFingerprint:header.nutrition_preference_fingerprint,version:header.version,status:header.status,createdAt:header.created_at,updatedAt:header.updated_at,payload:planPayloadSchema.parse(revision.data.snapshot),mealPlanId:header.nutrition_plan_references[0]?.meal_plan_id??null};
 }
 export async function getProposal(context:AuthContext,id:string){
  z.string().uuid().parse(id);const {data,error}=await context.db.from('plan_proposals').select('id,base_version,preference_fingerprint,payload,status,created_at,expires_at').eq('user_id',context.userId).eq('id',id).maybeSingle();
