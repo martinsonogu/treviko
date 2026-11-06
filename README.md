@@ -88,6 +88,10 @@ In your local `.env.local`, set `OPENAI_API_KEY` to your own server-only project
 
 For local nutrition experiments, `NUTRITION_ALLOW_FIXTURES=true` enables clearly labelled development food/recipe fixtures. Numerical nutrient calculations are deterministic. Live USDA lookup additionally needs your own `USDA_FDC_API_KEY`. `npm run nutrition:import -- --apply` deliberately writes reference fixtures to the database configured in `.env.local`; run only against your reviewed development target. Adding `--live` fetches source records using your USDA key. This import is not required for the public library or automated tests.
 
+## Progression coaching
+
+Kivo can compare recorded exercise performances and training frequency using bounded owner-scoped history. It distinguishes recorded improvement, consistency, mixed results and insufficient evidence, and keeps plan changes reviewable. Load-entry conventions and incomplete logs limit what can be concluded. See the [progression guide](docs/PROGRESSION.md) for rules, the required read-only migration and real-workout verification steps.
+
 ## Architecture
 
 ```text
