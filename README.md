@@ -9,7 +9,7 @@ Built with Next.js App Router, TypeScript, Tailwind CSS, Supabase and the OpenAI
 ## What you can do
 
 - Talk with Kivo, restore conversations and review structured training or nutrition proposals. Saving a plan requires explicit confirmation.
-- Explore 48 typed exercises with equipment filtering and movement instructions. Exercise media are clearly marked placeholders.
+- Explore 48 typed exercises with equipment filtering, movement instructions and anatomical illustrations. The [illustrations are licensed under CC BY 4.0](public/exercises/LICENSE.md), separately from application code. Validate released assets with `node scripts/audit-exercise-illustrations.mjs`.
 - Start or resume a workout, record sets/reps/seconds and loads, finish partial or complete sessions, and add optional effort feedback.
 - Review immutable workout history and progress based on actual completed sessions. Kivo can discuss saved actuals, exact history counts and bounded comparisons.
 - Manage private profile preferences, authentication, password recovery and account deletion.
