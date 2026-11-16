@@ -13,6 +13,3 @@ next-env.d.ts
 .env*
 supabase/
 src/lib/nutrition/fdc-fixture.json
-
-# Historical records are not current contributor prose.
-docs/engineering-notes.md
