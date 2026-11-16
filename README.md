@@ -1,36 +1,22 @@
 # Treviko
 
-A mobile-first personal training app with Kivo, an AI coach that works with your saved preferences, training plans and recorded workouts. Describe what you want to achieve, review a proposed plan, then train and log your actual sets. Nutrition coaching is optional.
+A mobile-first personal training app with **Kivo**, an AI coach that connects your goals, training plans and recorded workouts. Nutrition coaching is optional.
 
 Built with Next.js App Router, TypeScript, Tailwind CSS, Supabase and the OpenAI API.
 
-**Open-source launch preparation:** the repository is awaiting owner review of licensing, asset rights and publication settings. MIT is the proposed default, but no project license has been granted yet. See the [release review](docs/OPEN_SOURCE_REVIEW.md). Keeping `package.json` private prevents accidental npm publication.
+## Features
 
-## What you can do
+- Personalised training and nutrition proposals, with explicit confirmation before saving.
+- Persistent Coach conversations, plan revisions and coaching based on recorded workout history.
+- A library of 48 exercises with anatomical illustrations, equipment filters and movement instructions.
+- Workout start/resume, set logging, completion, effort feedback and immutable training history.
+- Progress summaries based on saved sessions.
+- Account authentication, profile preferences, password recovery and account deletion.
+- Responsive desktop navigation and five-tab mobile navigation, with PWA installation support. An internet connection is required.
 
-- Talk with Kivo, restore conversations and review structured training or nutrition proposals. Saving a plan requires explicit confirmation.
-- Explore 48 typed exercises with equipment filtering, movement instructions and anatomical illustrations. The [illustrations are licensed under CC BY 4.0](public/exercises/LICENSE.md), separately from application code. Validate released assets with `node scripts/audit-exercise-illustrations.mjs`.
-- Start or resume a workout, record sets/reps/seconds and loads, finish partial or complete sessions, and add optional effort feedback.
-- Review immutable workout history and progress based on actual completed sessions. Kivo can discuss saved actuals, exact history counts and bounded comparisons.
-- Manage private profile preferences, authentication, password recovery and account deletion.
-- Use five-tab mobile navigation and install the PWA on supported browsers. Connectivity is required; there is no service worker or offline synchronisation.
+## Getting started
 
-## Screenshots
-
-Screenshots are pending. Capture the following using a disposable local account and invented test data, with no real email addresses, conversations, keys or infrastructure identifiers:
-
-| View               | Capture to contribute                          |
-| ------------------ | ---------------------------------------------- |
-| Home / Training    | Mobile plan and start/resume actions           |
-| Coach              | Conversation and an unconfirmed proposal       |
-| Workout completion | Saved actual sets and optional effort check-in |
-| History / Progress | Clearly labelled sample completed sessions     |
-
-Do not substitute screenshots from a real user's account. The [contribution guide](CONTRIBUTING.md) explains review expectations.
-
-## Start without credentials
-
-Use Node.js 24 (`.nvmrc`) and npm. The lockfile is committed.
+Use Node.js 24 and npm.
 
 ```sh
 git clone https://github.com/martinsonogu/treviko.git
@@ -41,37 +27,36 @@ cp .env.example .env.local
 npm run dev
 ```
 
-While the repository is private, cloning requires access. Open <http://localhost:3000>. Public Home and the exercise library work without credentials. Account features and live AI require the setup below; missing configuration does not simulate successful saves or AI responses. Automated tests mock paid OpenAI calls.
+Open <http://localhost:3000>. Home and the exercise library work without service credentials. Account features require Supabase; live coaching also requires your own OpenAI credentials.
 
-## Use your own development Supabase
+## Configuration
 
-Never use the maintainers' production project or ask for their keys.
+Keep credentials in `.env.local`, which is ignored by Git. The [environment template](.env.example) lists all settings. Use your own development services.
 
-### Local Supabase (recommended)
+| Variable                               | Purpose                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| `APP_ORIGIN`                           | `http://localhost:3000` locally; your HTTPS origin in production             |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL                                                         |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe publishable key, or legacy anon key                             |
+| `SUPABASE_SECRET_KEY`                  | Server-only secret key, or legacy service-role key                           |
+| `OPENAI_API_KEY`                       | Server-only key for live coaching                                            |
+| `OPENAI_MODEL`                         | A model available to your project that supports Responses structured outputs |
+| `USDA_FDC_API_KEY`                     | Optional live USDA nutrition lookups                                         |
 
-Install Docker and the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started), start Docker, then run from this repository:
+### Local Supabase
+
+Install Docker and the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started), start Docker, then run:
 
 ```sh
 supabase start
 supabase status
 ```
 
-The local stack uses `supabase/config.toml`, the migrations in `supabase/migrations/` and the intentionally empty seed. Copy credentials from **your local** status output into `.env.local`; do not paste that output into issues or logs:
+Copy your local URL and keys into `.env.local`. The local stack applies the migrations in `supabase/migrations/`; check them with `supabase migration list --local`. Use the local email inbox shown by `supabase status` for signup and recovery messages.
 
-| Variable                               | Local CLI value                                 | Browser exposure           |
-| -------------------------------------- | ----------------------------------------------- | -------------------------- |
-| `APP_ORIGIN`                           | `http://localhost:3000`                         | Not a credential           |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Local API URL, usually `http://127.0.0.1:54321` | Public                     |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Local publishable key, or legacy `anon` key     | Public; RLS still required |
-| `SUPABASE_SECRET_KEY`                  | Local secret key, or legacy `service_role` key  | **Server only**            |
+### Hosted development Supabase
 
-All migrations must be applied in order, including workout history query functions. `supabase migration list --local` checks the local history. If an existing disposable local stack is stale, `supabase db reset --local` rebuilds **and erases its local database**. Use it only when you intend to discard your local test data; never add `--linked` or `--db-url` to this reset command. Check the local email inbox URL shown by `supabase status` for signup/recovery messages. The checked-in local auth URLs/templates target port 3000.
-
-### Your own hosted development project (alternative)
-
-Create a separate Supabase development project. In Project Settings / API Keys obtain its project URL, publishable key and server secret (legacy anon/service-role keys are supported). Configure the same variables above. Configure Auth's Site URL as `http://localhost:3000` and allow `/auth/confirm`, `/auth/confirm?next=/reset-password` and `/reset-password` under that origin. Review the local email templates in `supabase/templates/` for corresponding confirmation/recovery behavior.
-
-With the CLI authenticated to **your** account, explicitly link your development project, inspect migration history, then review a dry run before applying:
+Create a separate development project, configure its URL and keys, and set Auth's Site URL to `http://localhost:3000`. Allow these redirect URLs under that origin: `/auth/confirm`, `/auth/confirm?next=/reset-password` and `/reset-password`.
 
 ```sh
 supabase link --project-ref YOUR_DEVELOPMENT_PROJECT_REF
@@ -80,43 +65,15 @@ supabase db push --linked --dry-run
 supabase db push --linked
 ```
 
-If tables were created manually, stop and reconcile the schema/history rather than repeatedly running initial migrations or blindly marking them applied. Do not use a production database for contributor testing.
+Review the target and migration list before applying. Existing manually created schemas need migration-history reconciliation rather than repeated initial migrations or a database reset.
 
-## Optional live AI and nutrition sources
+### AI and nutrition
 
-In your local `.env.local`, set `OPENAI_API_KEY` to your own server-only project key and `OPENAI_MODEL` to an available model supporting Responses structured outputs. Set `OPENAI_REASONING_EFFORT` only if supported by that model, then restart Next.js. No live AI call is needed for lint, typecheck, tests or build. Live testing can incur charges; keep the existing user/global token, rate and concurrency controls. For cost caps, first configure current per-million model prices in the matching variables. The [environment template](.env.example) lists the available settings.
+Set your OpenAI key and model, then restart the app. Live calls incur charges. User/global rate, concurrency and token limits are built in; configure model prices before enabling monetary caps. Set `OPENAI_REASONING_EFFORT` only when supported by your chosen model.
 
-For local nutrition experiments, `NUTRITION_ALLOW_FIXTURES=true` enables clearly labelled development food/recipe fixtures. Numerical nutrient calculations are deterministic. Live USDA lookup additionally needs your own `USDA_FDC_API_KEY`. `npm run nutrition:import -- --apply` deliberately writes reference fixtures to the database configured in `.env.local`; run only against your reviewed development target. Adding `--live` fetches source records using your USDA key. This import is not required for the public library or automated tests.
+`NUTRITION_ALLOW_FIXTURES=true` enables development nutrition fixtures. Nutrition calculations use reference data separately from AI-generated descriptions. `npm run nutrition:import -- --apply` writes reference data to the configured database; use your development project. Add `--live` for USDA source records.
 
-## Progression coaching
-
-Kivo can compare recorded exercise performances and training frequency using bounded owner-scoped history. It distinguishes recorded improvement, consistency, mixed results and insufficient evidence, and keeps plan changes reviewable. Load-entry conventions and incomplete logs limit what can be concluded. See the [progression guide](docs/PROGRESSION.md) for rules, the required read-only migration and real-workout verification steps.
-
-## Architecture
-
-```text
-App Router pages and client components
-  └─ /api/v1 authenticated route handlers
-      ├─ Supabase Auth → owner-scoped services → PostgreSQL + RLS
-      ├─ Coach → scope/safety → bounded context → metered OpenAI → independent review
-      ├─ Plan proposals → verified exercise IDs / reference nutrition → explicit confirmation
-      └─ Workout services → versioned writes, idempotent finish, immutable history
-```
-
-| Area                                                  | Location                                                 |
-| ----------------------------------------------------- | -------------------------------------------------------- |
-| Public/auth/authenticated shells                      | `src/app/`, `src/components/layout/`                     |
-| Kivo conversation, safety and metering                | `src/lib/coach/`, `src/lib/persistence/`                 |
-| Validated proposal workflow                           | `src/lib/coaching/`                                      |
-| Workout lifecycle and history                         | `src/lib/workouts/`                                      |
-| Exercise and nutrition reference data                 | `src/lib/training/`, `src/lib/nutrition/`                |
-| Authentication/profile services                       | `src/lib/auth/`, `src/lib/profile/`, `src/lib/supabase/` |
-| Schema, ownership rules and local auth templates      | `supabase/`                                              |
-| Mocked service/API tests and PostgreSQL/PGlite checks | `tests/`                                                 |
-
-Core data operations live behind reusable APIs for a future native client. No native application is included. Local draft recovery is not offline synchronisation.
-
-## Checks
+## Development
 
 ```sh
 npm run lint
@@ -125,24 +82,36 @@ npm test
 npm run build
 ```
 
-Run typecheck and build sequentially: both generate `.next` type files. The standard suite includes in-memory PostgreSQL/PGlite security and persistence tests, with paid AI mocked. A local Supabase integration test is skipped unless explicitly enabled; see [CONTRIBUTING](CONTRIBUTING.md). CI uses no Supabase/OpenAI credentials.
+Run typecheck and build sequentially because both generate Next.js type files. Tests mock paid AI calls and include PostgreSQL/PGlite ownership and persistence checks. No live credentials are required for these checks.
 
-Optional real-component Chrome checks: `npm run test:navigation`, `npm run test:typing`, `npm run test:workouts`. Set `CHROME_BIN` to your Chrome/Chromium executable outside the default macOS path. These use mocked transport and do not establish live-model or physical-device behavior.
+Validate the released exercise images with `node scripts/audit-exercise-illustrations.mjs`. See [CONTRIBUTING](CONTRIBUTING.md) for Git hooks, browser checks and local integration tests.
 
-## Production is a separate workflow
+## Architecture
 
-Contributor setup is not production deployment. Before deploying, provision a separate production Supabase project and server-only secrets, configure an HTTPS `APP_ORIGIN` and exact Auth redirect allowlist, review RLS/migrations and backups, disable development fixtures, and configure model budgets/prices. `NEXT_PUBLIC_*` values are embedded in client bundles and must never contain server keys. Use `npm run build` then `npm run start` in an appropriate Node hosting environment. CI does not deploy, import data or apply migrations.
+| Area                                     | Location                                                 |
+| ---------------------------------------- | -------------------------------------------------------- |
+| App routes and responsive UI             | `src/app/`, `src/components/`                            |
+| Kivo safety, context and metering        | `src/lib/coach/`, `src/lib/persistence/`                 |
+| Plan proposals and confirmation          | `src/lib/coaching/`                                      |
+| Workout lifecycle and progression        | `src/lib/workouts/`                                      |
+| Exercise and nutrition reference data    | `src/lib/training/`, `src/lib/nutrition/`                |
+| Authentication and profiles              | `src/lib/auth/`, `src/lib/profile/`, `src/lib/supabase/` |
+| Database schema and local Auth templates | `supabase/`                                              |
 
-Treat prompts, profiles, allergies and workout records as private. Do not upload `.env.local`, `.next`, database dumps, screenshots or request logs as debugging artifacts. Existing database protections are part of the product, not optional production configuration.
+Private operations use authenticated `/api/v1` handlers and Supabase ownership checks/RLS. Workout writes use version protection and idempotent completion. Kivo compares compatible saved performances within bounded history; it does not infer unrecorded workouts or physiological improvements. Plan changes require confirmation.
 
-## How to Contribute
+## Deployment
 
-Read [CONTRIBUTING](CONTRIBUTING.md), choose a [beginner-friendly issue draft](docs/COMMUNITY.md#publish-ready-issue-drafts), and open a focused pull request. The owner will publish reviewed drafts as [GitHub issues](https://github.com/martinsonogu/treviko/issues). Ask setup questions or discuss early ideas in [Discussions](https://github.com/martinsonogu/treviko/discussions) once enabled; it may be unavailable until the owner activates it. No production credentials are provided to contributors.
+Build with `npm run build` and serve with `npm run start` on a supported Node.js host. Use a separate production Supabase project and server-managed secrets.
 
-See the [community guide](docs/COMMUNITY.md) for labels, review boundaries and recommended discussion categories.
+For `https://treviko.fit`, set `APP_ORIGIN=https://treviko.fit` and configure Supabase's Site URL and the three Auth redirect paths above on that origin. Rebuild after changing `NEXT_PUBLIC_*` values. Disable development fixtures, use production reference data, and configure model budgets, SMTP, backups and HTTPS. CI runs checks; it does not deploy or apply database migrations.
 
-## Release readiness
+## How to contribute
 
-Read [CONTRIBUTING](CONTRIBUTING.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) and [SECURITY](SECURITY.md). Publish-ready starter issues are in the [community guide](docs/COMMUNITY.md); the exact GitHub release configuration checklist is in the [open-source review](docs/OPEN_SOURCE_REVIEW.md). Historical implementation details and past manual checks are preserved in [engineering notes](docs/engineering-notes.md); those notes are not current setup instructions.
+Read [CONTRIBUTING](CONTRIBUTING.md), find an [issue](https://github.com/martinsonogu/treviko/issues), and open a focused pull request. Follow the [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities through the [private security process](SECURITY.md).
 
-**Licensing decision pending:** MIT is proposed for owner-controlled code/documentation. The owner must confirm copyright ownership, contributor permissions, and rights to all artwork/data before adding a license. Dependencies and USDA data retain their own terms; an eventual project license does not replace them or automatically grant branding rights.
+## Licence
+
+Code and documentation: [MIT](LICENSE), copyright 2026 Treviko contributors.
+
+Exercise illustrations: [CC BY 4.0](public/exercises/LICENSE.md). Dependencies and source data retain their own terms. The code licence does not grant trademark rights in Treviko branding.
